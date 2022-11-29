@@ -13,48 +13,9 @@ Ingress Example with TLS Termination
 This example builds on the HTTP and gRPC ingress examples, adding TLS
 termination.
 
-Create TLS Certificate and Private Key
-======================================
+.. literalinclude:: ../../../examples/kubernetes/servicemesh/tls-ingress.yaml
 
-.. tabs::
-
-    .. group-tab:: Self-signed Certificate
-
-        For demonstration purposes we will use a TLS certificate signed by a made-up,
-        `self-signed <https://cert-manager.io/docs/faq/terminology/#what-does-self-signed-mean-is-my-ca-self-signed>`_
-        certificate authority (CA). One easy way to do this is with `minica <https://github.com/jsha/minica>`_.
-        We want a certificate that will validate ``bookinfo.cilium.rocks`` and
-        ``hipstershop.cilium.rocks``, as these are the host names used in this ingress
-        example.
-
-        .. code-block:: shell-session
-
-            $ minica -domains '*.cilium.rocks'
-
-        On first run, ``minica`` generates a CA certificate and key (``minica.pem`` and
-        ``minica-key.pem``). It also creates a directory called ``_.cilium.rocks``
-        containing a key and certificate file that we will use for the ingress service.
-
-        Create a Kubernetes secret with this demo key and certificate:
-
-        .. code-block:: shell-session
-
-            $ kubectl create secret tls demo-cert --key=_.cilium.rocks/key.pem --cert=_.cilium.rocks/cert.pem
-
-    .. group-tab:: Cert Manager
-
-        Let us install cert-manager:
-
-        .. code-block:: shell-session
-
-            $ helm repo add jetstack https://charts.jetstack.io
-            $ helm install cert-manager jetstack/cert-manager --version v1.7.1 --namespace cert-manager --set installCRDs=true --create-namespace
-
-        Now, create a CA Issuer:
-
-        .. parsed-literal::
-
-            $ kubectl apply -f \ |SCM_WEB|\/examples/kubernetes/servicemesh/ca-issuer.yaml
+.. include:: tls-cert.rst
 
 Deploy the Ingress
 ==================
@@ -113,7 +74,7 @@ assigned to the ingress service, so your file looks something like this:
 .. code-block:: shell-session
 
     $ sudo perl -ni -e 'print if !/\.cilium\.rocks$/d' /etc/hosts; sudo tee -a /etc/hosts \
-      <<<"$(kubectl get svc/cilium-ingress-tls-ingress -o=jsonpath='{.status.loadBalancer.ingress[0].ip}') bookinfo.cilium.rocks hipstershop.cilium.rocks"
+      <<<"$(kubectl get ing tls-ingress -o=jsonpath='{.status.loadBalancer.ingress[0].ip}') bookinfo.cilium.rocks hipstershop.cilium.rocks"
 
 
 Make HTTPS Requests

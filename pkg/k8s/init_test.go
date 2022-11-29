@@ -20,10 +20,17 @@ import (
 	"github.com/cilium/cilium/pkg/checker"
 	slim_corev1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/api/core/v1"
 	"github.com/cilium/cilium/pkg/node"
+	"github.com/cilium/cilium/pkg/option"
 	"github.com/cilium/cilium/pkg/source"
 )
 
 func (s *K8sSuite) TestUseNodeCIDR(c *C) {
+	prevAnnotateK8sNode := option.Config.AnnotateK8sNode
+	option.Config.AnnotateK8sNode = true
+	defer func() {
+		option.Config.AnnotateK8sNode = prevAnnotateK8sNode
+	}()
+
 	// Test IPv4
 	node1 := v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
@@ -42,7 +49,6 @@ func (s *K8sSuite) TestUseNodeCIDR(c *C) {
 	// and we need to wait for the response of the channel.
 	patchChan := make(chan bool, 2)
 	fakeK8sClient := &fake.Clientset{}
-	k8sCLI.Interface = fakeK8sClient
 	fakeK8sClient.AddReactor("patch", "nodes",
 		func(action testing.Action) (bool, runtime.Object, error) {
 			n1copy := node1.DeepCopy()
@@ -66,7 +72,7 @@ func (s *K8sSuite) TestUseNodeCIDR(c *C) {
 	c.Assert(node.GetIPv4AllocRange().String(), Equals, "10.2.0.0/16")
 	// IPv6 Node range is not checked because it shouldn't be changed.
 
-	err := k8sCLI.AnnotateNode("node1",
+	err := AnnotateNode(fakeK8sClient, "node1",
 		0,
 		node.GetIPv4AllocRange(),
 		node.GetIPv6AllocRange(),
@@ -101,7 +107,6 @@ func (s *K8sSuite) TestUseNodeCIDR(c *C) {
 	failAttempts := 0
 
 	fakeK8sClient = &fake.Clientset{}
-	k8sCLI.Interface = fakeK8sClient
 	fakeK8sClient.AddReactor("patch", "nodes",
 		func(action testing.Action) (bool, runtime.Object, error) {
 			// first call will be a patch for annotations
@@ -133,7 +138,7 @@ func (s *K8sSuite) TestUseNodeCIDR(c *C) {
 	c.Assert(node.GetIPv4AllocRange().String(), Equals, "10.254.0.0/16")
 	c.Assert(node.GetIPv6AllocRange().String(), Equals, "aaaa:aaaa:aaaa:aaaa:beef:beef::/96")
 
-	err = k8sCLI.AnnotateNode("node2",
+	err = AnnotateNode(fakeK8sClient, "node2",
 		0,
 		node.GetIPv4AllocRange(),
 		node.GetIPv6AllocRange(),

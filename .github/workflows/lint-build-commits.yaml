@@ -12,7 +12,7 @@ concurrency:
 jobs:
   build_commits:
     name: Check if build works for every commit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
       - name: Configure git
@@ -21,19 +21,24 @@ jobs:
           git config --global user.email "github-actions@users.noreply.github.com"
 
       - name: Install Go
-        uses: actions/setup-go@268d8c0ca0432bb2cf416faae41297df9d262d7f
+        uses: actions/setup-go@c4a742cab115ed795e34d4513e2cf7d472deb55f
         with:
-          go-version: 1.19.2
+          go-version: 1.19.3
 
       - name: Cache LLVM and Clang
         id: cache-llvm
-        uses: actions/cache@56461b9eb0f8438fd15c7a9968e3c9ebb18ceff1
+        uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7
         with:
           path: $HOME/.clang
           key: llvm-10.0
 
+      - name: Install LLVM and Clang prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libtinfo5
+
       - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@c538b5e281d5fc40848a3a62636a3a2b6f5a1cfa
+        uses: KyleMayes/install-llvm-action@665aaf9d6fba342a852f55fecc5688e7f00e6663
         with:
           version: "10.0"
           directory: $HOME/.clang
@@ -61,7 +66,7 @@ jobs:
           git rebase --exec "make build -j $(nproc)" $PR_PARENT_SHA
 
       - name: Check bpf code changes
-        uses: dorny/paths-filter@b2feaf19c27470162a626bd6fa8438ae5b263721
+        uses: dorny/paths-filter@4512585405083f25c027a35db413c2b3b9006d50
         id: bpf-tree
         with:
           filters: |
@@ -81,7 +86,7 @@ jobs:
           git rebase --exec "make -C bpf build_all -j $(nproc)" $PR_PARENT_SHA
 
       - name: Check test code changes
-        uses: dorny/paths-filter@78ab00f87740f82aec8ed8826eb4c3c851044126
+        uses: dorny/paths-filter@4512585405083f25c027a35db413c2b3b9006d50
         id: test-tree
         with:
           filters: |

@@ -38,7 +38,6 @@ import (
 	"github.com/cilium/cilium/pkg/bpf"
 	"github.com/cilium/cilium/pkg/completion"
 	"github.com/cilium/cilium/pkg/envoy/xds"
-	"github.com/cilium/cilium/pkg/ipcache"
 	"github.com/cilium/cilium/pkg/lock"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	"github.com/cilium/cilium/pkg/node"
@@ -162,7 +161,7 @@ func toAny(pb proto.Message) *anypb.Any {
 }
 
 // StartXDSServer configures and starts the xDS GRPC server.
-func StartXDSServer(ipcache *ipcache.IPCache, stateDir string) *XDSServer {
+func StartXDSServer(ipcache IPCacheEventSource, stateDir string) *XDSServer {
 	xdsPath := getXDSPath(stateDir)
 
 	os.Remove(xdsPath)
@@ -373,7 +372,7 @@ func (s *XDSServer) getHttpFilterChainProto(clusterName string, tls bool) *envoy
 // When optional 'filterName' is given, it is configured as the first filter in the chain
 // and 'proxylib' is not configured. In this case the returned filter chain is only used
 // if the applicable network policy specifies 'filterName' as the L7 parser.
-func (s *XDSServer) getTcpFilterChainProto(clusterName string, filterName string, config *anypb.Any) *envoy_config_listener.FilterChain {
+func (s *XDSServer) getTcpFilterChainProto(clusterName string, filterName string, config *anypb.Any, tls bool) *envoy_config_listener.FilterChain {
 	var filters []*envoy_config_listener.Filter
 
 	// 1. Add the filter 'filterName' to the beginning of the TCP chain with optional 'config', if needed.
@@ -426,10 +425,21 @@ func (s *XDSServer) getTcpFilterChainProto(clusterName string, filterName string
 
 	chain := &envoy_config_listener.FilterChain{
 		Filters: filters,
-		FilterChainMatch: &envoy_config_listener.FilterChainMatch{
-			// must have transport match, otherwise TLS inspector will be automatically inserted
+	}
+
+	if tls {
+		chain.FilterChainMatch = &envoy_config_listener.FilterChainMatch{
+			TransportProtocol: "tls",
+		}
+		chain.TransportSocket = &envoy_config_core.TransportSocket{
+			Name: "cilium.tls_wrapper",
+		}
+	} else {
+		chain.FilterChainMatch = &envoy_config_listener.FilterChainMatch{
+			// must have transport match for non-TLS,
+			// otherwise TLS inspector will be automatically inserted
 			TransportProtocol: "raw_buffer",
-		},
+		}
 	}
 
 	if filterName != "" {
@@ -719,9 +729,11 @@ func getListenerSocketMarkOption(isIngress bool) *envoy_config_core.SocketOption
 
 func (s *XDSServer) getListenerConf(name string, kind policy.L7ParserType, port uint16, isIngress bool, mayUseOriginalSourceAddr bool) *envoy_config_listener.Listener {
 	clusterName := egressClusterName
+	tlsClusterName := egressTLSClusterName
 
 	if isIngress {
 		clusterName = ingressClusterName
+		tlsClusterName = ingressTLSClusterName
 	}
 
 	listenerConf := &envoy_config_listener.Listener{
@@ -733,41 +745,39 @@ func (s *XDSServer) getListenerConf(name string, kind policy.L7ParserType, port 
 		},
 		// FilterChains: []*envoy_config_listener.FilterChain
 		ListenerFilters: []*envoy_config_listener.ListenerFilter{
+			// Always insert tls_inspector as the first filter
+			{
+				Name: "envoy.filters.listener.tls_inspector",
+			},
 			getListenerFilter(isIngress, mayUseOriginalSourceAddr, false),
 		},
 	}
 
 	// Add filter chains
 	if kind == policy.ParserTypeHTTP {
-		// Use tls_inspector only with HTTP, insert as the first filter
-		listenerConf.ListenerFilters = append([]*envoy_config_listener.ListenerFilter{{
-			Name: "envoy.filters.listener.tls_inspector",
-		}}, listenerConf.ListenerFilters...)
-
 		listenerConf.FilterChains = append(listenerConf.FilterChains, s.getHttpFilterChainProto(clusterName, false))
 
 		// Add a TLS variant
-		tlsClusterName := egressTLSClusterName
-		if isIngress {
-			tlsClusterName = ingressTLSClusterName
-		}
 		listenerConf.FilterChains = append(listenerConf.FilterChains, s.getHttpFilterChainProto(tlsClusterName, true))
 	} else {
 		// Default TCP chain, takes care of all parsers in proxylib
-		listenerConf.FilterChains = append(listenerConf.FilterChains, s.getTcpFilterChainProto(clusterName, "", nil))
+		listenerConf.FilterChains = append(listenerConf.FilterChains, s.getTcpFilterChainProto(clusterName, "", nil, false))
+
+		// Add a TLS variant
+		listenerConf.FilterChains = append(listenerConf.FilterChains, s.getTcpFilterChainProto(tlsClusterName, "", nil, true))
 
 		// Experimental TCP chain for MySQL 5.x
 		listenerConf.FilterChains = append(listenerConf.FilterChains, s.getTcpFilterChainProto(clusterName,
 			"envoy.filters.network.mysql_proxy", toAny(&envoy_mysql_proxy.MySQLProxy{
 				StatPrefix: "mysql",
-			})))
+			}), false))
 
 		// Experimental TCP chain for MongoDB
 		listenerConf.FilterChains = append(listenerConf.FilterChains, s.getTcpFilterChainProto(clusterName,
 			"envoy.filters.network.mongo_proxy", toAny(&envoy_mongo_proxy.MongoProxy{
 				StatPrefix:          "mongo",
 				EmitDynamicMetadata: true,
-			})))
+			}), false))
 	}
 	return listenerConf
 }
@@ -1118,8 +1128,9 @@ func createBootstrap(filePath string, nodeId, cluster string, xdsSock, egressClu
 	useDownstreamProtocolAutoSNI := map[string]*anypb.Any{
 		"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": toAny(&envoy_config_upstream.HttpProtocolOptions{
 			UpstreamHttpProtocolOptions: &envoy_config_core.UpstreamHttpProtocolOptions{
-				AutoSni:           true,
-				AutoSanValidation: true,
+				//	Setting AutoSni or AutoSanValidation options here may crash
+				//	Envoy, when Cilium Network filter already passes these from
+				//	downstream to upstream.
 			},
 			CommonHttpProtocolOptions: &envoy_config_core.HttpProtocolOptions{
 				MaxRequestsPerConnection: wrapperspb.UInt32(uint32(option.Config.ProxyMaxRequestsPerConnection)),
@@ -1521,7 +1532,7 @@ func getDirectionNetworkPolicy(ep logger.EndpointUpdater, l4Policy policy.L4Poli
 					if !cs {
 						canShortCircuit = false
 					}
-					if len(rule.RemotePolicies) == 0 && rule.L7 == nil {
+					if len(rule.RemotePolicies) == 0 && rule.L7 == nil && rule.DownstreamTlsContext == nil && rule.UpstreamTlsContext == nil {
 						// Got an allow-all rule, which can short-circuit all of
 						// the other rules.
 						allowAll = true

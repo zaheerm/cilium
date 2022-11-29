@@ -13,38 +13,14 @@ Ingress HTTP Example
 The example ingress configuration routes traffic to backend services from the
 ``bookinfo`` demo microservices app from the Istio project.
 
-
-Deploy the Demo App
-===================
-
-.. code-block:: shell-session
-
-    $ kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.11/samples/bookinfo/platform/kube/bookinfo.yaml
-
-This is just deploying the demo app, it's not adding any Istio components. You
-can confirm that with Cilium Service Mesh there is no Envoy sidecar created
-alongside each of the demo app microservices.
-
-.. code-block:: shell-session
-
-    $ kubectl get pods
-    NAME                              READY   STATUS    RESTARTS   AGE
-    details-v1-5498c86cf5-kjzkj       1/1     Running   0          2m39s
-    productpage-v1-65b75f6885-ff59g   1/1     Running   0          2m39s
-    ratings-v1-b477cf6cf-kv7bh        1/1     Running   0          2m39s
-    reviews-v1-79d546878f-r5bjz       1/1     Running   0          2m39s
-    reviews-v2-548c57f459-pld2f       1/1     Running   0          2m39s
-    reviews-v3-6dd79655b9-nhrnh       1/1     Running   0          2m39s
-
-.. Note::
-
-    With the sidecar implementation the output would show 2/2 READY. One for
-    the microservice and one for the Envoy sidecar.
+.. include:: demo-app.rst
 
 Deploy the First Ingress
 ========================
 
 You'll find the example Ingress definition in ``basic-ingress.yaml``.
+
+.. literalinclude:: ../../../examples/kubernetes/servicemesh/basic-ingress.yaml
 
 .. parsed-literal::
 
@@ -60,6 +36,7 @@ external IP address, but it may take around 30 seconds.
 
 .. code-block:: shell-session
 
+    # For dedicated load balancer mode
     $ kubectl get svc
     NAME                           TYPE           CLUSTER-IP       EXTERNAL-IP     PORT(S)        AGE
     cilium-ingress-basic-ingress   LoadBalancer   10.98.169.125    10.98.169.125   80:32478/TCP   2m11s
@@ -69,6 +46,10 @@ external IP address, but it may take around 30 seconds.
     ratings                        ClusterIP      10.108.152.42    <none>          9080/TCP       2m15s
     reviews                        ClusterIP      10.111.145.160   <none>          9080/TCP       2m15s
 
+    # For shared load balancer mode
+    $ kubectl get services -n kube-system cilium-ingress
+    NAME             TYPE           CLUSTER-IP      EXTERNAL-IP     PORT(S)                      AGE
+    cilium-ingress   LoadBalancer   10.98.169.125   10.98.169.125   80:32690/TCP,443:31566/TCP   18m
 
 The external IP address should also be populated into the Ingress:
 

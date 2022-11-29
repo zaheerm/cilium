@@ -246,6 +246,18 @@ bool lb6_svc_is_hostport(const struct lb6_service *svc __maybe_unused)
 }
 
 static __always_inline
+bool lb4_svc_is_loopback(const struct lb4_service *svc __maybe_unused)
+{
+	return svc->flags2 & SVC_FLAG_LOOPBACK;
+}
+
+static __always_inline
+bool lb6_svc_is_loopback(const struct lb6_service *svc __maybe_unused)
+{
+	return svc->flags2 & SVC_FLAG_LOOPBACK;
+}
+
+static __always_inline
 bool lb4_svc_has_src_range_check(const struct lb4_service *svc __maybe_unused)
 {
 #ifdef ENABLE_SRC_RANGE_CHECK
@@ -500,7 +512,6 @@ static __always_inline int lb6_rev_nat(struct __ctx_buff *ctx, int l4_off,
  * @arg l4_off		Offset to L4 header
  * @arg key		Pointer to store LB key in
  * @arg csum_off	Pointer to store L4 checksum field offset and flags
- * @arg dir		Flow direction
  *
  * Expects the ctx to be validated for direct packet access up to L4. Fills
  * lb6_key based on L4 nexthdr.
@@ -514,17 +525,14 @@ static __always_inline int lb6_extract_key(struct __ctx_buff *ctx __maybe_unused
 					   struct ipv6_ct_tuple *tuple,
 					   int l4_off __maybe_unused,
 					   struct lb6_key *key,
-					   struct csum_offset *csum_off,
-					   enum ct_dir dir)
+					   struct csum_offset *csum_off)
 {
-	union v6addr *addr;
 	/* FIXME(brb): set after adding support for different L4 protocols in LB */
 	key->proto = 0;
-	addr = (dir == CT_INGRESS) ? &tuple->saddr : &tuple->daddr;
-	ipv6_addr_copy(&key->address, addr);
+	ipv6_addr_copy(&key->address, &tuple->daddr);
 	csum_l4_offset_and_flags(tuple->nexthdr, csum_off);
 
-	return extract_l4_port(ctx, tuple->nexthdr, l4_off, dir, &key->dport,
+	return extract_l4_port(ctx, tuple->nexthdr, l4_off, CT_EGRESS, &key->dport,
 			       NULL);
 }
 
@@ -1129,8 +1137,7 @@ static __always_inline int lb4_rev_nat(struct __ctx_buff *ctx, int l3_off, int l
  * @arg ip4		Pointer to L3 header
  * @arg l4_off		Offset to L4 header
  * @arg key		Pointer to store LB key in
- * @arg csum_off	Pointer to store L4 checksum field offset  in
- * @arg dir		Flow direction
+ * @arg csum_off	Pointer to store L4 checksum field offset and flags
  *
  * Returns:
  *   - CTX_ACT_OK on successful extraction
@@ -1141,16 +1148,15 @@ static __always_inline int lb4_extract_key(struct __ctx_buff *ctx __maybe_unused
 					   struct iphdr *ip4,
 					   int l4_off __maybe_unused,
 					   struct lb4_key *key,
-					   struct csum_offset *csum_off,
-					   enum ct_dir dir)
+					   struct csum_offset *csum_off)
 {
 	/* FIXME: set after adding support for different L4 protocols in LB */
 	key->proto = 0;
-	key->address = (dir == CT_INGRESS) ? ip4->saddr : ip4->daddr;
+	key->address = ip4->daddr;
 	if (ipv4_has_l4_header(ip4))
 		csum_l4_offset_and_flags(ip4->protocol, csum_off);
 
-	return extract_l4_port(ctx, ip4->protocol, l4_off, dir, &key->dport, ip4);
+	return extract_l4_port(ctx, ip4->protocol, l4_off, CT_EGRESS, &key->dport, ip4);
 }
 
 static __always_inline
@@ -1714,7 +1720,7 @@ lb4_ctx_restore_state(struct __ctx_buff *ctx, struct ct_state *state,
 static __always_inline __maybe_unused
 __sock_cookie sock_local_cookie(struct bpf_sock_addr *ctx)
 {
-#ifdef BPF_HAVE_SOCKET_COOKIE
+#ifdef HAVE_SOCKET_COOKIE
 	/* prandom() breaks down on UDP, hence preference is on
 	 * socket cookie as built-in selector. On older kernels,
 	 * get_socket_cookie() provides a unique per netns cookie

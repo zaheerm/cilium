@@ -25,7 +25,7 @@ endif
 # meaning 'all subpackages of the given package'.
 TESTPKGS ?= ./...
 
-SWAGGER_VERSION := v0.25.0
+SWAGGER_VERSION := v0.30.3
 SWAGGER := $(CONTAINER_ENGINE) run -u $(shell id -u):$(shell id -g) --rm -v $(CURDIR):$(CURDIR) -w $(CURDIR) --entrypoint swagger quay.io/goswagger/swagger:$(SWAGGER_VERSION)
 
 GOTEST_BASE := -test.v -timeout 600s
@@ -270,7 +270,7 @@ manifests: ## Generate K8s manifests e.g. CRD, RBAC etc.
 	mv ${TMPDIR}/cilium.io_ciliumclusterwideenvoyconfigs.yaml ./pkg/k8s/apis/cilium.io/client/crds/v2/ciliumclusterwideenvoyconfigs.yaml
 	mv ${TMPDIR}/cilium.io_ciliumenvoyconfigs.yaml ./pkg/k8s/apis/cilium.io/client/crds/v2/ciliumenvoyconfigs.yaml
 	mv ${TMPDIR}/cilium.io_ciliumbgppeeringpolicies.yaml ./pkg/k8s/apis/cilium.io/client/crds/v2alpha1/ciliumbgppeeringpolicies.yaml
-	mv ${TMPDIR}/cilium.io_ciliumbgploadbalancerippools.yaml ./pkg/k8s/apis/cilium.io/client/crds/v2alpha1/ciliumbgploadbalancerippools.yaml
+	mv ${TMPDIR}/cilium.io_ciliumloadbalancerippools.yaml ./pkg/k8s/apis/cilium.io/client/crds/v2alpha1/ciliumloadbalancerippools.yaml
 	rm -rf $(TMPDIR)
 
 generate-api: api/v1/openapi.yaml ## Generate cilium-agent client, model and server code from openapi spec.
@@ -430,13 +430,18 @@ govet: ## Run govet on Go source files in the repository.
 
 golangci-lint: ## Run golangci-lint
 ifneq (,$(findstring $(GOLANGCILINT_WANT_VERSION),$(GOLANGCILINT_VERSION)))
-	@$(ECHO_CHECK) golangci-lint
-	$(QUIET) golangci-lint run
+	@$(ECHO_CHECK) golangci-lint $(GOLANGCI_LINT_ARGS)
+	$(QUIET) golangci-lint run $(GOLANGCI_LINT_ARGS)
 else
-	$(QUIET) $(CONTAINER_ENGINE) run --rm -v `pwd`:/app -w /app docker.io/golangci/golangci-lint:v$(GOLANGCILINT_WANT_VERSION)@$(GOLANGCILINT_IMAGE_SHA) golangci-lint run
+	$(QUIET) $(CONTAINER_ENGINE) run --rm -v `pwd`:/app -w /app docker.io/golangci/golangci-lint:v$(GOLANGCILINT_WANT_VERSION)@$(GOLANGCILINT_IMAGE_SHA) golangci-lint run $(GOLANGCI_LINT_ARGS)
 endif
 
-lint: golangci-lint ## Run golangci-lint and bpf-mock linters.
+golangci-lint-fix: ## Run golangci-lint to automatically fix warnings
+	$(QUIET)$(MAKE) golangci-lint GOLANGCI_LINT_ARGS="--fix"
+
+lint: golangci-lint
+
+lint-fix: golangci-lint-fix
 
 logging-subsys-field: ## Validate logrus subsystem field for logs in Go source code.
 	@$(ECHO_CHECK) contrib/scripts/check-logging-subsys-field.sh
@@ -648,9 +653,7 @@ update-go-version: ## Update Go version for all the components (images, CI, dev-
 	$(QUIET) sed -i 's/GOLANG_VERSION=.*/GOLANG_VERSION="$(GO_VERSION)"/g' test/packet/scripts/install.sh
 	@echo "Updated go version in test scripts to $(GO_VERSION)"
 	# Update Go version in Dockerfiles.
-	$(QUIET) sed -i 's/^go_version=.*/go_version=$(GO_IMAGE_VERSION)/g' images/scripts/update-golang-image.sh
-	$(QUIET) $(MAKE) -C images update-golang-image
-	@echo "Updated go version in image Dockerfiles to $(GO_IMAGE_VERSION)"
+	$(QUIET) sed -i 's/GOLANG_VERSION=.*/GOLANG_VERSION=$(GO_VERSION)/g' contrib/backporting/Dockerfile
 
 dev-doctor: ## Run Cilium dev-doctor to validate local development environment.
 	$(QUIET)$(GO) version 2>/dev/null || ( echo "go not found, see https://golang.org/doc/install" ; false )

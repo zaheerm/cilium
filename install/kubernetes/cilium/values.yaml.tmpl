@@ -17,9 +17,13 @@ rbac:
 imagePullSecrets:
 # - name: "image-pull-secret"
 
-# kubeConfigPath: ~/.kube/config
-# k8sServiceHost:
-# k8sServicePort:
+# -- (string) Kubernetes config path
+# @default -- `"~/.kube/config"`
+kubeConfigPath: ""
+# -- (string) Kubernetes service host
+k8sServiceHost: ""
+# -- (string) Kubernetes service port
+k8sServicePort: ""
 
 cluster:
   # -- Name of the cluster. Only required for Cluster Mesh.
@@ -171,19 +175,80 @@ resources: {}
   #   cpu: 100m
   #   memory: 512Mi
 
-# -- Security context to be added to agent pods
 securityContext:
+  # -- User to run the pod with
   # runAsUser: 0
+  # -- Run the pod with elevated privileges
   privileged: false
-  extraCapabilities:
-    # Allow discretionary access control (e.g. required for package installation)
-    - DAC_OVERRIDE
-    # Allow to set Access Control Lists (ACLs) on arbitrary files (e.g. required for package installation)
-    - FOWNER
-    # Allow to execute program that changes GID (e.g. required for package installation)
-    - SETGID
-    # Allow to execute program that changes UID (e.g. required for package installation)
-    - SETUID
+  capabilities:
+    # -- Capabilities for the `cilium-agent` container
+    ciliumAgent:
+      # Use to set socket permission
+      - CHOWN
+      # Used to terminate envoy child process
+      - KILL
+      # Used since cilium modifies routing tables, etc...
+      - NET_ADMIN
+      # Used since cilium creates raw sockets, etc...
+      - NET_RAW
+      # Used since cilium monitor uses mmap
+      - IPC_LOCK
+      # Used in iptables. Consider removing once we are iptables-free
+      - SYS_MODULE
+      # We need it for now but might not need it for >= 5.11 specially
+      # for the 'SYS_RESOURCE'.
+      # In >= 5.8 there's already BPF and PERMON capabilities
+      - SYS_ADMIN
+      # Could be an alternative for the SYS_ADMIN for the RLIMIT_NPROC
+      - SYS_RESOURCE
+      # Both PERFMON and BPF requires kernel 5.8, container runtime
+      # cri-o >= v1.22.0 or containerd >= v1.5.0.
+      # If available, SYS_ADMIN can be removed.
+      #- PERFMON
+      #- BPF
+      # Allow discretionary access control (e.g. required for package installation)
+      - DAC_OVERRIDE
+      # Allow to set Access Control Lists (ACLs) on arbitrary files (e.g. required for package installation)
+      - FOWNER
+      # Allow to execute program that changes GID (e.g. required for package installation)
+      - SETGID
+      # Allow to execute program that changes UID (e.g. required for package installation)
+      - SETUID
+    # -- Capabilities for the `mount-cgroup` init container
+    mountCgroup:
+      # Only used for 'mount' cgroup
+      - SYS_ADMIN
+      # Used for nsenter
+      - SYS_CHROOT
+      - SYS_PTRACE
+    # -- capabilities for the `apply-sysctl-overwrites` init container
+    applySysctlOverwrites:
+      # Required in order to access host's /etc/sysctl.d dir
+      - SYS_ADMIN
+      # Used for nsenter
+      - SYS_CHROOT
+      - SYS_PTRACE
+    # -- Capabilities for the `clean-cilium-state` init container
+    cleanCiliumState:
+      # Most of the capabilities here are the same ones used in the
+      # cilium-agent's container because this container can be used to
+      # uninstall all Cilium resources, and therefore it is likely that
+      # will need the same capabilities.
+      # Used since cilium modifies routing tables, etc...
+      - NET_ADMIN
+      # Used in iptables. Consider removing once we are iptables-free
+      - SYS_MODULE
+      # We need it for now but might not need it for >= 5.11 specially
+      # for the 'SYS_RESOURCE'.
+      # In >= 5.8 there's already BPF and PERMON capabilities
+      - SYS_ADMIN
+      # Could be an alternative for the SYS_ADMIN for the RLIMIT_NPROC
+      - SYS_RESOURCE
+      # Both PERFMON and BPF requires kernel 5.8, container runtime
+      # cri-o >= v1.22.0 or containerd >= v1.5.0.
+      # If available, SYS_ADMIN can be removed.
+      #- PERFMON
+      #- BPF
 
 # -- Cilium agent update strategy
 updateStrategy:
@@ -223,12 +288,6 @@ alibabacloud:
   # -- Enable AlibabaCloud ENI integration
   enabled: false
 
-# -- Deprecated in favor of bandwidthManager.enabled. To be removed in 1.13.
-# Optimize TCP and UDP workloads and enable rate-limiting traffic from
-# individual Pods with EDT (Earliest Departure Time) through the
-# "kubernetes.io/egress-bandwidth" Pod annotation.
-#bandwidthManager: false
-
 # -- Enable bandwidth manager to optimize TCP and UDP workloads and allow
 # for rate-limiting traffic from individual Pods with EDT (Earliest Departure
 # Time) through the "kubernetes.io/egress-bandwidth" Pod annotation.
@@ -237,6 +296,11 @@ bandwidthManager:
   enabled: false
   # -- Activate BBR TCP congestion control for Pods
   bbr: false
+
+# -- Configure Stateless NAT46/NAT64 translation
+statelessNat46x64:
+  # -- Enable RFC8215-prefixed translation
+  enabled: false
 
 # -- Configure BGP
 bgp:
@@ -253,6 +317,11 @@ bgp:
 # CiliumBGPPeeringPolicy CRDs.
 bgpControlPlane:
   # -- Enables the BGP control plane.
+  enabled: false
+
+pmtuDiscovery:
+  # -- Enable path MTU discovery to send ICMP fragmentation-needed replies to
+  # the client.
   enabled: false
 
 bpf:
@@ -297,9 +366,10 @@ bpf:
   # -- Configure the maximum number of entries in endpoint policy map (per endpoint).
   policyMapMax: 16384
 
-  # -- Configure auto-sizing for all BPF maps based on available memory.
+  # -- (float64) Configure auto-sizing for all BPF maps based on available memory.
   # ref: https://docs.cilium.io/en/stable/concepts/ebpf/maps/#ebpf-maps
-  #mapDynamicSizeRatio: 0.0025
+  # @default -- `0.0025`
+  mapDynamicSizeRatio: ~
 
   # -- Configure the level of aggregation for monitor notifications.
   # Valid options are none, low, medium, maximum.
@@ -316,32 +386,26 @@ bpf:
   # -- Allow cluster external access to ClusterIP services.
   lbExternalClusterIP: false
 
-  # -- Enable native IP masquerade support in eBPF
-  #masquerade: false
+  # -- (bool) Enable native IP masquerade support in eBPF
+  # @default -- `false`
+  masquerade: ~
 
-  # -- Deprecated in favor of bpf.hostLegacyRouting. To be removed in 1.13.
-  # Configure whether direct routing mode should route traffic via
-  # host stack (true) or directly and more efficiently out of BPF (false) if
-  # the kernel supports it.
-  #hostRouting: true
-
-  # -- Configure whether direct routing mode should route traffic via
+  # -- (bool) Configure whether direct routing mode should route traffic via
   # host stack (true) or directly and more efficiently out of BPF (false) if
   # the kernel supports it. The latter has the implication that it will also
   # bypass netfilter in the host namespace.
-  #hostLegacyRouting: false
+  # @default -- `false`
+  hostLegacyRouting: ~
 
-  # -- Configure the eBPF-based TPROXY to reduce reliance on iptables rules
+  # -- (bool) Configure the eBPF-based TPROXY to reduce reliance on iptables rules
   # for implementing Layer 7 policy.
-  # tproxy: true
+  # @default -- `false`
+  tproxy: ~
 
-  # -- Configure the FIB lookup bypass optimization for nodeport reverse
-  # NAT handling.
-  # lbBypassFIBLookup: true
-
-  # -- Configure explicitly allowed VLAN id's for bpf logic bypass.
+  # -- (list) Configure explicitly allowed VLAN id's for bpf logic bypass.
   # [0] will allow all VLAN id's without any filtering.
-  # vlanBypass: []
+  # @default -- `[]`
+  vlanBypass: ~
 
 # -- Clean all eBPF datapath state from the initContainer of the cilium-agent
 # DaemonSet.
@@ -439,11 +503,6 @@ customCalls:
   # -- Enable tail call hooks for custom eBPF programs.
   enabled: false
 
-# -- Configure which datapath mode should be used for configuring container
-# connectivity. Valid options are "veth" or "ipvlan". Deprecated, to be removed
-# in v1.12.
-datapathMode: veth
-
 daemon:
   # -- Configure where Cilium runtime state should be stored.
   runPath: "/var/run/cilium"
@@ -522,6 +581,23 @@ ingressController:
     labels: {}
     # -- Annotations to be added for the shared LB service
     annotations: {}
+
+gatewayAPI:
+  # -- Enable support for Gateway API in cilium
+  # This will automatically set enable-envoy-config as well.
+  enabled: false
+
+  # -- SecretsNamespace is the namespace in which envoy SDS will retrieve TLS secrets from.
+  secretsNamespace:
+    # -- Create secrets namespace for Gateway API.
+    create: true
+
+    # -- Name of Gateway API secret namespace.
+    name: cilium-secrets
+
+    # -- Enable secret sync, which will make sure all TLS secrets used by Ingress are synced to secretsNamespace.name.
+    # If disabled, TLS secrets must be maintained externally.
+    sync: true
 
 # -- Enables the fallback compatibility solution for when the xt_socket kernel
 # module is missing and it is needed for the datapath L7 redirection to work
@@ -718,6 +794,8 @@ hubble:
     #   --set metrics.enabled="{dns:query;ignoreAAAA,drop,tcp,flow,icmp,http}"
     #
     enabled: ~
+    # -- Enables exporting hubble metrics in OpenMetrics format.
+    enableOpenMetrics: false
     # -- Configure the port the hubble metric server listens on.
     port: 9965
     # -- Annotations to be added to hubble-metrics service.
@@ -733,10 +811,16 @@ hubble:
       annotations: {}
       # -- Interval for scrape metrics.
       interval: "10s"
+      # -- Relabeling configs for the ServiceMonitor hubble
+      relabelings:
+        - sourceLabels:
+            - __meta_kubernetes_pod_node_name
+          targetLabel: node
+          replacement: ${1}
       # -- Metrics relabeling configs for the ServiceMonitor hubble
       metricRelabelings: ~
     dashboards:
-      enabled: true
+      enabled: false
       label: grafana_dashboard
       namespace: ~
       labelValue: "1"
@@ -749,6 +833,12 @@ hubble:
   # Set this field ":4244" if you are enabling Hubble Relay, as it assumes that
   # Hubble is listening on port 4244.
   listenAddress: ":4244"
+  # -- Whether Hubble should prefer to announce IPv6 or IPv4 addresses if both are available.
+  preferIpv6: false
+  # -- (bool) Skip Hubble events with unknown cgroup ids
+  # @default -- `true`
+  skipUnknownCGroupIDs: ~
+
   peerService:
     # -- Enable a K8s Service for the Peer service, so that it can be accessed
     # by a non-local client
@@ -977,6 +1067,8 @@ hubble:
         # -- Specify the Kubernetes namespace where Prometheus expects to find
         # service monitors configured.
         # namespace: ""
+        # -- Relabeling configs for the ServiceMonitor hubble-relay
+        relabelings: ~
         # -- Metrics relabeling configs for the ServiceMonitor hubble-relay
         metricRelabelings: ~
 
@@ -1423,6 +1515,12 @@ prometheus:
     # -- Specify the Kubernetes namespace where Prometheus expects to find
     # service monitors configured.
     # namespace: ""
+    # -- Relabeling configs for the ServiceMonitor cilium-agent
+    relabelings:
+      - sourceLabels:
+          - __meta_kubernetes_pod_node_name
+        targetLabel: node
+        replacement: ${1}
     # -- Metrics relabeling configs for the ServiceMonitor cilium-agent
     metricRelabelings: ~
   # -- Metrics that should be enabled or disabled from the default metric
@@ -1740,6 +1838,9 @@ operator:
   # -- Interval for cilium node garbage collection.
   nodeGCInterval: "5m0s"
 
+  # -- Skip CNP node status clean up at operator startup.
+  skipCNPStatusStartupClean: false
+
   # -- Interval for identity garbage collection.
   identityGCInterval: "15m0s"
 
@@ -1761,6 +1862,8 @@ operator:
       annotations: {}
       # -- Interval for scrape metrics.
       interval: "10s"
+      # -- Relabeling configs for the ServiceMonitor cilium-operator
+      relabelings: ~
       # -- Metrics relabeling configs for the ServiceMonitor cilium-operator
       metricRelabelings: ~
 

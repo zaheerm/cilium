@@ -39,6 +39,34 @@ var (
 	addMetric    = metrics.ServicesCount.WithLabelValues("add")
 )
 
+// ErrLocalRedirectServiceExists represents an error when a Local redirect
+// service exists with the same Frontend.
+type ErrLocalRedirectServiceExists struct {
+	frontend lb.L3n4AddrID
+	name     lb.ServiceName
+}
+
+// NewErrLocalRedirectServiceExists returns a new ErrLocalRedirectServiceExists
+func NewErrLocalRedirectServiceExists(frontend lb.L3n4AddrID, name lb.ServiceName) error {
+	return &ErrLocalRedirectServiceExists{
+		frontend: frontend,
+		name:     name,
+	}
+}
+
+func (e ErrLocalRedirectServiceExists) Error() string {
+	return fmt.Sprintf("local-redirect service exists for "+
+		"frontend %v, skip update for svc %v", e.frontend, e.name)
+}
+
+func (e *ErrLocalRedirectServiceExists) Is(target error) bool {
+	t, ok := target.(*ErrLocalRedirectServiceExists)
+	if !ok {
+		return false
+	}
+	return e.frontend.DeepEqual(&t.frontend) && e.name == t.name
+}
+
 // healthServer is used to manage HealtCheckNodePort listeners
 type healthServer interface {
 	UpsertService(svcID lb.ID, svcNS, svcName string, localEndpoints int, port uint16)
@@ -71,6 +99,7 @@ type svcInfo struct {
 	loadBalancerSourceRanges  []*cidr.CIDR
 	l7LBProxyPort             uint16   // Non-zero for egress L7 LB services
 	l7LBFrontendPorts         []string // Non-zero for L7 LB frontend service ports
+	LoopbackHostport          bool
 
 	restoredFromDatapath bool
 }
@@ -94,6 +123,7 @@ func (svc *svcInfo) deepCopyToLBSVC() *lb.SVC {
 		Name:                svc.svcName,
 		L7LBProxyPort:       svc.l7LBProxyPort,
 		L7LBFrontendPorts:   svc.l7LBFrontendPorts,
+		LoopbackHostport:    svc.LoopbackHostport,
 	}
 }
 
@@ -762,6 +792,7 @@ func (s *Service) UpdateBackendsState(backends []*lb.Backend) error {
 						CheckSourceRange:          info.checkLBSourceRange(),
 						UseMaglev:                 info.useMaglev(),
 						Name:                      info.svcName,
+						LoopbackHostport:          info.LoopbackHostport,
 					}
 				}
 				p.PreferredBackends, p.ActiveBackends, p.NonActiveBackends = segregateBackends(info.backends)
@@ -1041,6 +1072,7 @@ func (s *Service) createSVCInfoIfNotExist(p *lb.SVC) (*svcInfo, bool, bool,
 			loadBalancerSourceRanges: p.LoadBalancerSourceRanges,
 			l7LBProxyPort:            p.L7LBProxyPort,
 			l7LBFrontendPorts:        p.L7LBFrontendPorts,
+			LoopbackHostport:         p.LoopbackHostport,
 		}
 		s.svcByID[p.Frontend.ID] = svc
 		s.svcByHash[hash] = svc
@@ -1049,10 +1081,8 @@ func (s *Service) createSVCInfoIfNotExist(p *lb.SVC) (*svcInfo, bool, bool,
 		// as the service clusterIP type. In such cases, if a Local redirect service
 		// exists, we shouldn't override it with clusterIP type (e.g., k8s event/sync, etc).
 		if svc.svcType == lb.SVCTypeLocalRedirect && p.Type == lb.SVCTypeClusterIP {
-			err := fmt.Errorf("local-redirect service exists for "+
-				"frontend %v, skip update for svc %v", p.Frontend, p.Name)
+			err := NewErrLocalRedirectServiceExists(p.Frontend, p.Name)
 			return svc, !found, prevSessionAffinity, prevLoadBalancerSourceRanges, err
-
 		}
 		// Local-redirect service can only override clusterIP service type or itself.
 		if p.Type == lb.SVCTypeLocalRedirect &&
@@ -1243,6 +1273,7 @@ func (s *Service) upsertServiceIntoLBMaps(svc *svcInfo, onlyLocalBackends bool,
 		UseMaglev:                 svc.useMaglev(),
 		L7LBProxyPort:             svc.l7LBProxyPort,
 		Name:                      svc.svcName,
+		LoopbackHostport:          svc.LoopbackHostport,
 	}
 	if err := s.lbmap.UpsertService(p); err != nil {
 		return err
@@ -1344,6 +1375,7 @@ func (s *Service) restoreServicesLocked() error {
 			svcType:          svc.Type,
 			svcTrafficPolicy: svc.TrafficPolicy,
 			svcNatPolicy:     svc.NatPolicy,
+			LoopbackHostport: svc.LoopbackHostport,
 
 			sessionAffinity:           svc.SessionAffinity,
 			sessionAffinityTimeoutSec: svc.SessionAffinityTimeoutSec,

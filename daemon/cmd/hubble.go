@@ -106,7 +106,7 @@ func (d *Daemon) launchHubble() {
 		}).Info("Starting Hubble Metrics server")
 		grpcMetrics := grpc_prometheus.NewServerMetrics()
 
-		if err := metrics.EnableMetrics(log, option.Config.HubbleMetricsServer, option.Config.HubbleMetrics, grpcMetrics); err != nil {
+		if err := metrics.EnableMetrics(log, option.Config.HubbleMetricsServer, option.Config.HubbleMetrics, grpcMetrics, option.Config.EnableHubbleOpenMetrics); err != nil {
 			logger.WithError(err).Warn("Failed to initialize Hubble metrics server")
 			return
 		}
@@ -129,7 +129,7 @@ func (d *Daemon) launchHubble() {
 	}
 
 	d.linkCache = link.NewLinkCache()
-	payloadParser, err := parser.New(logger, d, d, d, d, d, d.linkCache)
+	payloadParser, err := parser.New(logger, d, d, d, d, d, d.linkCache, d.cgroupManager)
 	if err != nil {
 		logger.WithError(err).Error("Failed to initialize Hubble")
 		return
@@ -178,6 +178,9 @@ func (d *Daemon) launchHubble() {
 	var peerServiceOptions []serviceoption.Option
 	if option.Config.HubbleTLSDisabled {
 		peerServiceOptions = append(peerServiceOptions, serviceoption.WithoutTLSInfo())
+	}
+	if option.Config.HubblePreferIpv6 {
+		peerServiceOptions = append(peerServiceOptions, serviceoption.WithAddressFamilyPreference(serviceoption.AddressPreferIPv6))
 	}
 	peerSvc := peer.NewService(d.nodeDiscovery.Manager, peerServiceOptions...)
 	localSrvOpts = append(localSrvOpts,

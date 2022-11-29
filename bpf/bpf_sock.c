@@ -75,7 +75,7 @@ static __always_inline __maybe_unused bool task_in_extended_hostns(void)
 static __always_inline __maybe_unused bool
 ctx_in_hostns(void *ctx __maybe_unused, __net_cookie *cookie)
 {
-#ifdef BPF_HAVE_NETNS_COOKIE
+#ifdef HAVE_NETNS_COOKIE
 	__net_cookie own_cookie = get_netns_cookie(ctx);
 
 	if (cookie)
@@ -112,22 +112,17 @@ static __always_inline __maybe_unused
 bool sock_proto_enabled(__u32 proto)
 {
 	switch (proto) {
-#ifdef ENABLE_SOCKET_LB_TCP
 	case IPPROTO_TCP:
 		return true;
-#endif /* ENABLE_SOCKET_LB_TCP */
-#ifdef ENABLE_SOCKET_LB_UDP
 	case IPPROTO_UDPLITE:
 	case IPPROTO_UDP:
 		return true;
-#endif /* ENABLE_SOCKET_LB_UDP */
 	default:
 		return false;
 	}
 }
 
 #ifdef ENABLE_IPV4
-#if defined(ENABLE_SOCKET_LB_UDP) || defined(ENABLE_SOCKET_LB_PEER)
 struct {
 	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, struct ipv4_revnat_tuple);
@@ -159,16 +154,6 @@ static __always_inline int sock4_update_revnat(struct bpf_sock_addr *ctx,
 				      &val, 0);
 	return ret;
 }
-#else
-static __always_inline
-int sock4_update_revnat(struct bpf_sock_addr *ctx __maybe_unused,
-			struct lb4_backend *backend __maybe_unused,
-			struct lb4_key *orig_key __maybe_unused,
-			__u16 rev_nat_id __maybe_unused)
-{
-	return 0;
-}
-#endif /* ENABLE_SOCKET_LB_UDP || ENABLE_SOCKET_LB_PEER */
 
 static __always_inline bool
 sock4_skip_xlate(struct lb4_service *svc, __be32 address)
@@ -226,20 +211,29 @@ static __always_inline struct lb4_service *
 sock4_wildcard_lookup_full(struct lb4_key *key __maybe_unused,
 			   const bool in_hostns __maybe_unused)
 {
-	struct lb4_service *svc = NULL;
-
 #ifdef ENABLE_NODEPORT
+	/* Save the original address, as the sock4_wildcard_lookup zeroes it */
+	bool loopback = is_v4_loopback(key->address);
+	__u32 orig_addr = key->address;
+	struct lb4_service *svc;
+
 	svc = sock4_wildcard_lookup(key, true, false, in_hostns);
-	if (svc && !lb4_svc_is_nodeport(svc))
-		svc = NULL;
-	if (!svc) {
-		svc = sock4_wildcard_lookup(key, false, true,
-					    in_hostns);
-		if (svc && !lb4_svc_is_hostport(svc))
-			svc = NULL;
-	}
+	if (svc && lb4_svc_is_nodeport(svc))
+		return svc;
+
+	/*
+	 * We perform a wildcard hostport lookup. If the SVC_FLAG_LOOPBACK
+	 * flag is set, then this means that the wildcard entry was set up
+	 * using a loopback IP address, in which case we only want to allow
+	 * connections to loopback addresses
+	 */
+	key->address = orig_addr;
+	svc = sock4_wildcard_lookup(key, false, true, in_hostns);
+	if (svc && lb4_svc_is_hostport(svc) && (!lb4_svc_is_loopback(svc) || loopback))
+		return svc;
 #endif /* ENABLE_NODEPORT */
-	return svc;
+
+	return NULL;
 }
 
 /* Service translation logic for a local-redirect service can cause packets to
@@ -265,7 +259,7 @@ static __always_inline bool
 sock4_skip_xlate_if_same_netns(struct bpf_sock_addr *ctx __maybe_unused,
 			       const struct lb4_backend *backend __maybe_unused)
 {
-#ifdef BPF_HAVE_SOCKET_LOOKUP
+#ifdef HAVE_SOCKET_LOOKUP
 	struct bpf_sock_tuple tuple = {
 		.ipv4.daddr = backend->address,
 		.ipv4.dport = backend->port,
@@ -287,7 +281,7 @@ sock4_skip_xlate_if_same_netns(struct bpf_sock_addr *ctx __maybe_unused,
 		sk_release(sk);
 		return true;
 	}
-#endif /* BPF_HAVE_SOCKET_LOOKUP */
+#endif /* HAVE_SOCKET_LOOKUP */
 	return false;
 }
 
@@ -350,7 +344,7 @@ static __always_inline int __sock4_xlate_fwd(struct bpf_sock_addr *ctx,
 		/* TC level eBPF datapath does not handle node local traffic,
 		 * but we need to redirect for L7 LB also in that case.
 		 */
-		if (is_defined(BPF_HAVE_NETNS_COOKIE) && in_hostns) {
+		if (is_defined(HAVE_NETNS_COOKIE) && in_hostns) {
 			/* Use the L7 LB proxy port as a backend. Normally this
 			 * would cause policy enforcement to be done before the
 			 * L7 LB (which should not be done), but in this case
@@ -553,7 +547,6 @@ int cil_sock4_pre_bind(struct bpf_sock_addr *ctx)
 }
 #endif /* ENABLE_HEALTH_CHECK */
 
-#if defined(ENABLE_SOCKET_LB_UDP) || defined(ENABLE_SOCKET_LB_PEER)
 static __always_inline int __sock4_xlate_rev(struct bpf_sock_addr *ctx,
 					     struct bpf_sock_addr *ctx_full)
 {
@@ -616,12 +609,10 @@ int cil_sock4_getpeername(struct bpf_sock_addr *ctx)
 	__sock4_xlate_rev(ctx, ctx);
 	return SYS_PROCEED;
 }
-#endif /* ENABLE_SOCKET_LB_UDP || ENABLE_SOCKET_LB_PEER */
 #endif /* ENABLE_IPV4 */
 
 #if defined(ENABLE_IPV6) || defined(ENABLE_IPV4)
 #ifdef ENABLE_IPV6
-#if defined(ENABLE_SOCKET_LB_UDP) || defined(ENABLE_SOCKET_LB_PEER)
 struct {
 	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, struct ipv6_revnat_tuple);
@@ -653,16 +644,6 @@ static __always_inline int sock6_update_revnat(struct bpf_sock_addr *ctx,
 				      &val, 0);
 	return ret;
 }
-#else
-static __always_inline
-int sock6_update_revnat(struct bpf_sock_addr *ctx __maybe_unused,
-			struct lb6_backend *backend __maybe_unused,
-			struct lb6_key *orig_key __maybe_unused,
-			__u16 rev_nat_index __maybe_unused)
-{
-	return 0;
-}
-#endif /* ENABLE_SOCKET_LB_UDP || ENABLE_SOCKET_LB_PEER */
 #endif /* ENABLE_IPV6 */
 
 static __always_inline void ctx_get_v6_address(const struct bpf_sock_addr *ctx,
@@ -762,20 +743,25 @@ static __always_inline __maybe_unused struct lb6_service *
 sock6_wildcard_lookup_full(struct lb6_key *key __maybe_unused,
 			   const bool in_hostns __maybe_unused)
 {
-	struct lb6_service *svc = NULL;
-
 #ifdef ENABLE_NODEPORT
+	/* Save the original address, as the sock6_wildcard_lookup zeroes it */
+	bool loopback = is_v6_loopback(&key->address);
+	union v6addr orig_address;
+	struct lb6_service *svc;
+
+	memcpy(&orig_address, &key->address, sizeof(orig_address));
 	svc = sock6_wildcard_lookup(key, true, false, in_hostns);
-	if (svc && !lb6_svc_is_nodeport(svc))
-		svc = NULL;
-	if (!svc) {
-		svc = sock6_wildcard_lookup(key, false, true,
-					    in_hostns);
-		if (svc && !lb6_svc_is_hostport(svc))
-			svc = NULL;
-	}
+	if (svc && lb6_svc_is_nodeport(svc))
+		return svc;
+
+	/* See a corresponding commment in sock4_wildcard_lookup_full */
+	memcpy(&key->address, &orig_address, sizeof(orig_address));
+	svc = sock6_wildcard_lookup(key, false, true, in_hostns);
+	if (svc && lb6_svc_is_hostport(svc) && (!lb6_svc_is_loopback(svc) || loopback))
+		return svc;
+
 #endif /* ENABLE_NODEPORT */
-	return svc;
+	return NULL;
 }
 
 static __always_inline
@@ -987,7 +973,7 @@ static __always_inline int __sock6_xlate_fwd(struct bpf_sock_addr *ctx,
 #ifdef ENABLE_L7_LB
 	/* See __sock4_xlate_fwd for commentary. */
 	if (lb6_svc_is_l7loadbalancer(svc)) {
-		if (is_defined(BPF_HAVE_NETNS_COOKIE) && in_hostns) {
+		if (is_defined(HAVE_NETNS_COOKIE) && in_hostns) {
 			union v6addr loopback = { .addr[15] = 1, };
 
 			l7backend.address = loopback;
@@ -1092,7 +1078,6 @@ int cil_sock6_connect(struct bpf_sock_addr *ctx)
 	return SYS_PROCEED;
 }
 
-#if defined(ENABLE_SOCKET_LB_UDP) || defined(ENABLE_SOCKET_LB_PEER)
 static __always_inline int
 sock6_xlate_rev_v4_in_v6(struct bpf_sock_addr *ctx __maybe_unused)
 {
@@ -1186,7 +1171,6 @@ int cil_sock6_getpeername(struct bpf_sock_addr *ctx)
 	__sock6_xlate_rev(ctx);
 	return SYS_PROCEED;
 }
-#endif /* ENABLE_SOCKET_LB_UDP || ENABLE_SOCKET_LB_PEER */
 #endif /* ENABLE_IPV6 || ENABLE_IPV4 */
 
 BPF_LICENSE("Dual BSD/GPL");

@@ -472,7 +472,6 @@ enabled would look as follows:
     helm install cilium |CHART_RELEASE| \\
         --namespace kube-system \\
         --set tunnel=disabled \\
-        --set autoDirectNodeRoutes=true \\
         --set kubeProxyReplacement=strict \\
         --set loadBalancer.mode=dsr \\
         --set k8sServiceHost=${API_SERVER_IP} \\
@@ -501,7 +500,6 @@ mode would look as follows:
     helm install cilium |CHART_RELEASE| \\
         --namespace kube-system \\
         --set tunnel=disabled \\
-        --set autoDirectNodeRoutes=true \\
         --set kubeProxyReplacement=strict \\
         --set loadBalancer.mode=hybrid \\
         --set k8sServiceHost=${API_SERVER_IP} \\
@@ -537,7 +535,6 @@ looks as follows:
     helm install cilium |CHART_RELEASE| \\
         --namespace kube-system \\
         --set tunnel=disabled \\
-        --set autoDirectNodeRoutes=true \\
         --set kubeProxyReplacement=strict \\
         --set socketLB.hostNamespaceOnly=true
 
@@ -574,7 +571,6 @@ modes and can be enabled as follows for ``loadBalancer.mode=hybrid`` in this exa
     helm install cilium |CHART_RELEASE| \\
         --namespace kube-system \\
         --set tunnel=disabled \\
-        --set autoDirectNodeRoutes=true \\
         --set kubeProxyReplacement=strict \\
         --set loadBalancer.acceleration=native \\
         --set loadBalancer.mode=hybrid \\
@@ -765,7 +761,6 @@ Finally, the deployment can be upgraded and later rolled-out with the
   helm upgrade cilium |CHART_RELEASE| \\
         --namespace kube-system \\
         --reuse-values \\
-        --set autoDirectNodeRoutes=true \\
         --set kubeProxyReplacement=strict \\
         --set loadBalancer.acceleration=native \\
         --set loadBalancer.mode=snat \\
@@ -902,29 +897,6 @@ kernels or starting from v5.7 kernels only for the host namespace by default
 and therefore not affecting any application pod ``bind(2)`` requests anymore. In
 order to opt-out from this behavior in general, this setting can be changed for
 expert users by switching ``nodePort.bindProtection`` to ``false``.
-
-NodePort with FHRP & VPC
-************************
-
-When using Cilium's kube-proxy replacement in conjunction with a
-`FHRP <https://en.wikipedia.org/wiki/First-hop_redundancy_protocol>`_
-such as VRRP or Cisco's HSRP and VPC (also known as multi-chassis EtherChannel), the default configuration
-can cause issues or unwanted traffic flows. This is due to an optimization that causes the source IP of
-ingress packets destined for a NodePort to be associated with the corresponding MAC address, and later in
-the reply, the MAC address is used as the destination when forwarding the L2 frame, bypassing the FIB lookup.
-
-In such an environment, it may be preferred to instruct Cilium not to attempt this optimization.
-This will ensure the response is always forwarded to the MAC address of the currently active FHRP peer, no matter
-the origin of the incoming packet.
-
-To disable the optimization set ``bpf.lbBypassFIBLookup`` to ``false``.
-
-.. parsed-literal::
-
-    helm install cilium |CHART_RELEASE| \\
-        --namespace kube-system \\
-        --set kubeProxyReplacement=strict \\
-        --set bpf.lbBypassFIBLookup=false
 
 .. _Configuring Maps:
 

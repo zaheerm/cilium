@@ -89,8 +89,8 @@ enum {
 #define CILIUM_CALL_IPV4_FROM_LXC		7
 #define CILIUM_CALL_IPV4_FROM_NETDEV		CILIUM_CALL_IPV4_FROM_LXC
 #define CILIUM_CALL_IPV4_FROM_OVERLAY		CILIUM_CALL_IPV4_FROM_LXC
-#define CILIUM_CALL_UNUSED1			8
-#define CILIUM_CALL_UNUSED2			9
+#define CILIUM_CALL_IPV46_RFC8215		8
+#define CILIUM_CALL_IPV64_RFC8215		9
 #define CILIUM_CALL_IPV6_FROM_LXC		10
 #define CILIUM_CALL_IPV6_FROM_NETDEV		CILIUM_CALL_IPV6_FROM_LXC
 #define CILIUM_CALL_IPV6_FROM_OVERLAY		CILIUM_CALL_IPV6_FROM_LXC
@@ -503,6 +503,8 @@ enum {
 #define DROP_INVALID_TC_BUFFER  -184
 #define DROP_NO_SID		-185
 #define DROP_MISSING_SRV6_STATE	-186
+#define DROP_NAT46		-187
+#define DROP_NAT64		-188
 
 #define NAT_PUNT_TO_STACK	DROP_NAT_NOT_NEEDED
 #define NAT_46X64_RECIRC	100
@@ -731,6 +733,7 @@ enum {
 	SVC_FLAG_LOCALREDIRECT  = (1 << 0),  /* local redirect */
 	SVC_FLAG_NAT_46X64      = (1 << 1),  /* NAT-46/64 entry */
 	SVC_FLAG_L7LOADBALANCER = (1 << 2),  /* tproxy redirect to local l7 loadbalancer */
+	SVC_FLAG_LOOPBACK       = (1 << 3),  /* hostport with a loopback hostIP */
 };
 
 /* Backend flags (lb{4,6}_backends->flags) */

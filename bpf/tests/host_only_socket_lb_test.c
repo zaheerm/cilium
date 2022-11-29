@@ -8,17 +8,14 @@
 #include "pktgen.h"
 
 #define ENABLE_IPV4 1
-#define ENABLE_HOST_SERVICES_TCP 1
 #undef ENABLE_HEALTH_CHECK
 #define ENABLE_SOCKET_LB_HOST_ONLY 1
-#define ENABLE_SOCKET_LB_TCP
-#define ENABLE_SOCKET_LB_UDP
 
 #define DST_PORT 6000
 #define DST_PORT_HOSTNS 6001
 #define BACKEND_PORT 7000
 
-#define BPF_HAVE_NETNS_COOKIE 1
+#define HAVE_NETNS_COOKIE 1
 
 /* Hardcode the host netns cookie to 0 */
 #define HOST_NETNS_COOKIE 0

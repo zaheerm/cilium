@@ -185,6 +185,12 @@ Users (Alphabetically)
       U: Service load-balancing, Encryption, CNI, NetworkPolicies
       Q: @kevholditch-f3, samo-f3, ewilde-form3
 
+    * N: FRSCA - Factory for Repeatable Secure Creation of Artifacts
+      D: FRSCA is utilizing tetragon integrated with Tekton to create runtime attestation to attest artifact and builder attributes
+      U: Runtime observability
+      L: https://github.com/buildsec/frsca
+      Q: @Parth Patel
+
     * N: F5 Inc
       D: F5 helps customers with Cilium VXLAN tunnel integration with BIG-IP
       U: Networking
@@ -212,6 +218,12 @@ Users (Alphabetically)
       U: Networking, CiliumclusterWideNetworkPolicy, CiliumNetworkPolicy, kube-proxy replacement, Hubble, Direct routing, egress gateway, hubble-otel, Multi Nic XDP, BGP advertisements, Bandwidth Manager, Service Load Balancing, Cluster Mesh
       L: https://www.ingka.com/
 
+    * N: Immerok
+      D: Immerok uses Cilium for cross-cluster communication and network isolation; Immerok Cloud is a serverless platform for the full power of [Apache Flink](https://flink.apache.org) at any scale.
+      U: Networking, network policy, observability, cluster mesh, kube-proxy replacement, security, CNI
+      L: https://immerok.io
+      Q: @austince, @dmvk
+
     * N: Infomaniak
       D: Infomaniak is using Cilium in their production clusters (self-hosted, bare-metal and openstack)
       U: Networking, CiliumNetworkPolicy, BPF NodePort, Direct routing, kube-proxy replacement
@@ -222,7 +234,7 @@ Users (Alphabetically)
       D: As a consulting company we added Cilium to a couple of our customers infrastructure
       U: Networking, CiliumNetworkPolicy at L7, kube-proxy replacement, encryption
       L: https://www.cloud-migration.ch/
-      Q: @fakod
+      Q: @fakod 
       
      * N: Isovalent
        D: Cilium is the platform that powers Isovalent’s enterprise networking, observability, and security solutions
@@ -365,6 +377,12 @@ Users (Alphabetically)
       L: https://planetscale.com/
       Q: @dctrwatson
 
+    * N: Polverio
+      D: Polverio KubeLift is a single-node Kubernetes distribution optimized for Azure, using Cilium as the CNI.
+      U: CNI, IPAM
+      L: https://polverio.com
+      Q: @polverio @stuartpreston
+
     * N: Poseidon Laboratories
       D: Poseidon's Typhoon Kubernetes distro uses Cilium as the default CNI and its used internally
       U: Networking, policies, service load balancing
@@ -390,6 +408,13 @@ Users (Alphabetically)
       D: Rapyuta is using cilium as their main CNI plugin. (self hosted k8s)
       U: CiliumNetworkPolicy, Hubble, Service Load Balancing.
       Q: @Gowtham
+      
+    * N: Rafay Systems
+      D: Rafay's Kubernetes Operations Platform uses Cilium for centralized network visibility and network policy enforcement
+      U: NetworkPolicy, Visibility via Prometheus metrics & Hubble
+      L: https://rafay.co/platform/network-policy-manager/
+      Q: @cloudnativeboy @mohanatreya
+
 
     * N: SAP
       D: SAP uses Cilium for multiple internal scenarios. For examples for self-hosted Kubernetes scenarios on AWS with SAP Concur and for managed Kubernetes clusters provided with Gardener Project across AWS, Azure, GCP, and OpenStack.
@@ -402,6 +427,11 @@ Users (Alphabetically)
       U: CNI, Network Policies, Hubble, kube-proxy replacement
       L: https://sapian.com.co, https://arpagon.co/blog/k8s-edge
       Q: @arpagon
+
+    * N: Seznam.cz
+      D: Seznam.cz uses Cilium in multiple scenarios in on-prem DCs. At first as L4LB which loadbalances external traffic into k8s+openstack clusters then as CNI in multiple k8s and openstack clusters which are all connected in a clustermesh to enforce NetworkPolicies across pods/VMs.
+      U: L4LB, L3/4 CNPs+CCNPs, KPR, Hubble, HostPolicy, Direct-routing, IPv4+IPv6, ClusterMesh
+      Q: @oblazek
 
     * N: Simple
       D: Simple uses cilium as default CNI in Kubernetes clusters (AWS EKS) for both development and production environments.

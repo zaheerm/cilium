@@ -150,7 +150,7 @@ var (
 		"cni.binPath":                 "/home/kubernetes/bin",
 		"gke.enabled":                 "true",
 		"loadBalancer.mode":           "snat",
-		"ipv4NativeRoutingCIDR":       GKENativeRoutingCIDR(),
+		"ipv4NativeRoutingCIDR":       NativeRoutingCIDR(),
 		"hostFirewall.enabled":        "false",
 		"ipam.mode":                   "kubernetes",
 		"devices":                     "", // Override "eth0 eth0\neth0"
@@ -163,7 +163,7 @@ var (
 		"extraArgs":                           "{--local-router-ipv4=169.254.23.0}",
 		"k8s.requireIPv4PodCIDR":              "false",
 		"ipv6.enabled":                        "false",
-		"ipv4NativeRoutingCIDR":               AKSNativeRoutingCIDR(),
+		"ipv4NativeRoutingCIDR":               NativeRoutingCIDR(),
 		"enableIPv4Masquerade":                "false",
 		"install-no-conntrack-iptables-rules": "false",
 		"installIptablesRules":                "true",
@@ -2497,7 +2497,7 @@ func (kub *Kubectl) overwriteHelmOptions(options map[string]string) error {
 		addIfNotOverwritten(options, "sessionAffinity", "false")
 	}
 	if DoesNotRunOnNetNextKernel() {
-		addIfNotOverwritten(options, "bandwidthManager", "false")
+		addIfNotOverwritten(options, "bandwidthManager.enabled", "false")
 	}
 
 	if RunsWithHostFirewall() {
@@ -2820,9 +2820,13 @@ func (kub *Kubectl) CiliumEndpointWaitReady() error {
 				continue
 			}
 			for _, ep := range endpoints {
+				state := ""
+				if ep.Status.State != nil {
+					state = string(*ep.Status.State)
+				}
 				errorMessage += fmt.Sprintf(
 					"\tCilium Pod: %s \tEndpoint: %d \tIdentity: %d\t State: %s\n",
-					pod, ep.ID, ep.Status.Identity.ID, ep.Status.State)
+					pod, ep.ID, ep.Status.Identity.ID, state)
 			}
 		}
 		return errorMessage
@@ -3666,6 +3670,7 @@ func (kub *Kubectl) GatherLogs(ctx context.Context) {
 		"kubectl get pods --all-namespaces -o json":                          "pods.json",
 		"kubectl get services --all-namespaces -o json":                      "svc.json",
 		"kubectl get nodes -o json":                                          "nodes.json",
+		"kubectl get cn -o json":                                             "ciliumnodes.json",
 		"kubectl get ds --all-namespaces -o json":                            "ds.json",
 		"kubectl get cnp --all-namespaces -o json":                           "cnp.json",
 		"kubectl get cep --all-namespaces -o json":                           "cep.json",
@@ -4764,7 +4769,7 @@ func (kub *Kubectl) WaitForServiceFrontend(node, ipAddr string) error {
 }
 
 // WaitForServiceBackend waits until the service backend with the given ipAddr
-// appears in "cilium bpf lb list" on the given node.
+// appears in "cilium bpf lb list --backends" on the given node.
 func (kub *Kubectl) WaitForServiceBackend(node, ipAddr string) error {
 	ciliumPod, err := kub.GetCiliumPodOnNode(node)
 	if err != nil {
@@ -4774,7 +4779,7 @@ func (kub *Kubectl) WaitForServiceBackend(node, ipAddr string) error {
 	body := func() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), ShortCommandTimeout)
 		defer cancel()
-		cmd := fmt.Sprintf(`cilium bpf lb list | grep -q %s`, ipAddr)
+		cmd := fmt.Sprintf(`cilium bpf lb list --backends | grep -q %s`, ipAddr)
 		return kub.CiliumExecContext(ctx, ciliumPod, cmd).WasSuccessful()
 	}
 

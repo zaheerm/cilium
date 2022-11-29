@@ -4,6 +4,7 @@
 package ipcache
 
 import (
+	"context"
 	"net"
 	"net/netip"
 	"time"
@@ -56,6 +57,7 @@ type K8sMetadata struct {
 
 // Configuration is init-time configuration for the IPCache.
 type Configuration struct {
+	context.Context
 	// Accessors to other subsystems, provided by the daemon
 	cache.IdentityAllocator
 	ipcacheTypes.PolicyHandler
@@ -122,8 +124,14 @@ func NewIPCache(c *Configuration) *IPCache {
 		metadata:          newMetadata(),
 		Configuration:     c,
 	}
-	ipc.deferredPrefixRelease = newAsyncPrefixReleaser(ipc, 1*time.Millisecond)
+	ipc.deferredPrefixRelease = newAsyncPrefixReleaser(c.Context, ipc, 1*time.Millisecond)
 	return ipc
+}
+
+// Shutdown cleans up asynchronous routines associated with the IPCache.
+func (ipc *IPCache) Shutdown() error {
+	ipc.deferredPrefixRelease.Shutdown()
+	return ipc.ShutdownLabelInjection()
 }
 
 // Lock locks the IPCache's mutex.

@@ -61,7 +61,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  cilium_cli_version: v0.12.4
+  cilium_cli_version: v0.12.7
   check_url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 jobs:
@@ -95,7 +95,7 @@ jobs:
           echo "::set-output name=head::$(jq -r '.head.sha' pr.json)"
       - name: Check code changes
         if: ${{ github.event.issue.pull_request }}
-        uses: dorny/paths-filter@b2feaf19c27470162a626bd6fa8438ae5b263721
+        uses: dorny/paths-filter@4512585405083f25c027a35db413c2b3b9006d50
         id: tested-tree
         with:
           base: ${{ steps.pr.outputs.base }}

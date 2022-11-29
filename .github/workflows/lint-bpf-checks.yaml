@@ -29,7 +29,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check code changes
-        uses: dorny/paths-filter@b2feaf19c27470162a626bd6fa8438ae5b263721
+        uses: dorny/paths-filter@4512585405083f25c027a35db413c2b3b9006d50
         id: changes
         with:
           # For `push` events, compare against the `ref` base branch
@@ -75,20 +75,24 @@ jobs:
     needs: check_changes
     if: ${{ needs.check_changes.outputs.bpf-tree == 'true' }}
     name: build datapath
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Install Go
-        uses: actions/setup-go@268d8c0ca0432bb2cf416faae41297df9d262d7f
+        uses: actions/setup-go@c4a742cab115ed795e34d4513e2cf7d472deb55f
         with:
-          go-version: 1.19.2
+          go-version: 1.19.3
       - name: Cache LLVM and Clang
         id: cache-llvm
-        uses: actions/cache@56461b9eb0f8438fd15c7a9968e3c9ebb18ceff1
+        uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7
         with:
           path: $HOME/.clang
           key: llvm-10.0
+      - name: Install LLVM and Clang prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libtinfo5
       - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@c538b5e281d5fc40848a3a62636a3a2b6f5a1cfa
+        uses: KyleMayes/install-llvm-action@665aaf9d6fba342a852f55fecc5688e7f00e6663
         with:
           version: "10.0"
           directory: $HOME/.clang
@@ -108,20 +112,24 @@ jobs:
     needs: check_changes
     if: ${{ needs.check_changes.outputs.bpf-tree == 'true' || needs.check_changes.outputs.bpf-tests-runner == 'true' }}
     name: BPF unit/integration Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Install Go
-        uses: actions/setup-go@268d8c0ca0432bb2cf416faae41297df9d262d7f
+        uses: actions/setup-go@c4a742cab115ed795e34d4513e2cf7d472deb55f
         with:
-          go-version: 1.19.2
+          go-version: 1.19.3
       - name: Cache LLVM and Clang
         id: cache-llvm
-        uses: actions/cache@56461b9eb0f8438fd15c7a9968e3c9ebb18ceff1
+        uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7
         with:
           path: $HOME/.clang
           key: llvm-10.0
+      - name: Install LLVM and Clang prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libtinfo5
       - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@c538b5e281d5fc40848a3a62636a3a2b6f5a1cfa
+        uses: KyleMayes/install-llvm-action@665aaf9d6fba342a852f55fecc5688e7f00e6663
         with:
           version: "10.0"
           directory: $HOME/.clang
@@ -131,9 +139,10 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Run BPF tests with code coverage reporting
+      - name: Run BPF tests
         run: |
-          make -C test run_bpf_tests COVER=1 || (echo "Run 'make -C test run_bpf_tests COVER=1' locally to investigate failures"; exit 1)
+          # TODO: re-enable coverage reporting, see https://github.com/cilium/cilium/issues/22088
+          make -C test run_bpf_tests || (echo "Run 'make -C test run_bpf_tests' locally to investigate failures"; exit 1)
       - name: Archive code coverage results
         uses: actions/upload-artifact@v3
         with:

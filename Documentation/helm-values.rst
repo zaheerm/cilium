@@ -97,6 +97,10 @@
      - Configure the path to the host boot directory
      - string
      - ``"/boot"``
+   * - bpf.hostLegacyRouting
+     - Configure whether direct routing mode should route traffic via host stack (true) or directly and more efficiently out of BPF (false) if the kernel supports it. The latter has the implication that it will also bypass netfilter in the host namespace.
+     - bool
+     - ``false``
    * - bpf.lbExternalClusterIP
      - Allow cluster external access to ClusterIP services.
      - bool
@@ -105,6 +109,14 @@
      - Configure the maximum number of service entries in the load balancer maps.
      - int
      - ``65536``
+   * - bpf.mapDynamicSizeRatio
+     - Configure auto-sizing for all BPF maps based on available memory. ref: https://docs.cilium.io/en/stable/concepts/ebpf/maps/#ebpf-maps
+     - float64
+     - ``0.0025``
+   * - bpf.masquerade
+     - Enable native IP masquerade support in eBPF
+     - bool
+     - ``false``
    * - bpf.monitorAggregation
      - Configure the level of aggregation for monitor notifications. Valid options are none, low, medium, maximum.
      - string
@@ -141,6 +153,14 @@
      - Configure the mount point for the BPF filesystem
      - string
      - ``"/sys/fs/bpf"``
+   * - bpf.tproxy
+     - Configure the eBPF-based TPROXY to reduce reliance on iptables rules for implementing Layer 7 policy.
+     - bool
+     - ``false``
+   * - bpf.vlanBypass
+     - Configure explicitly allowed VLAN id's for bpf logic bypass. [0] will allow all VLAN id's without any filtering.
+     - list
+     - ``[]``
    * - certgen
      - Configure certificate generation for Hubble integration. If hubble.tls.auto.method=cronJob, these values are used for the Kubernetes CronJob which will be scheduled regularly to (re)generate any certificates not provided manually.
      - object
@@ -393,10 +413,6 @@
      - Configure where Cilium runtime state should be stored.
      - string
      - ``"/var/run/cilium"``
-   * - datapathMode
-     - Configure which datapath mode should be used for configuring container connectivity. Valid options are "veth" or "ipvlan". Deprecated, to be removed in v1.12.
-     - string
-     - ``"veth"``
    * - debug.enabled
      - Enable debug logging
      - bool
@@ -717,6 +733,26 @@
      - Additional agent volumes.
      - list
      - ``[]``
+   * - gatewayAPI.enabled
+     - Enable support for Gateway API in cilium This will automatically set enable-envoy-config as well.
+     - bool
+     - ``false``
+   * - gatewayAPI.secretsNamespace
+     - SecretsNamespace is the namespace in which envoy SDS will retrieve TLS secrets from.
+     - object
+     - ``{"create":true,"name":"cilium-secrets","sync":true}``
+   * - gatewayAPI.secretsNamespace.create
+     - Create secrets namespace for Gateway API.
+     - bool
+     - ``true``
+   * - gatewayAPI.secretsNamespace.name
+     - Name of Gateway API secret namespace.
+     - string
+     - ``"cilium-secrets"``
+   * - gatewayAPI.secretsNamespace.sync
+     - Enable secret sync, which will make sure all TLS secrets used by Ingress are synced to secretsNamespace.name. If disabled, TLS secrets must be maintained externally.
+     - bool
+     - ``true``
    * - gke.enabled
      - Enable Google Kubernetes Engine integration
      - bool
@@ -752,7 +788,11 @@
    * - hubble.metrics
      - Hubble metrics configuration. See https://docs.cilium.io/en/stable/operations/metrics/#hubble-metrics for more comprehensive documentation about Hubble metrics.
      - object
-     - ``{"dashboards":{"annotations":{},"enabled":true,"label":"grafana_dashboard","labelValue":"1","namespace":null},"enabled":null,"port":9965,"serviceAnnotations":{},"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null}}``
+     - ``{"dashboards":{"annotations":{},"enabled":false,"label":"grafana_dashboard","labelValue":"1","namespace":null},"enableOpenMetrics":false,"enabled":null,"port":9965,"serviceAnnotations":{},"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null,"relabelings":[{"replacement":"${1}","sourceLabels":["__meta_kubernetes_pod_node_name"],"targetLabel":"node"}]}}``
+   * - hubble.metrics.enableOpenMetrics
+     - Enables exporting hubble metrics in OpenMetrics format.
+     - bool
+     - ``false``
    * - hubble.metrics.enabled
      - Configures the list of metrics to collect. If empty or null, metrics are disabled. Example:    enabled:   - dns:query;ignoreAAAA   - drop   - tcp   - flow   - icmp   - http  You can specify the list of metrics from the helm CLI:    --set metrics.enabled="{dns:query;ignoreAAAA,drop,tcp,flow,icmp,http}"
      - string
@@ -785,6 +825,10 @@
      - Metrics relabeling configs for the ServiceMonitor hubble
      - string
      - ``nil``
+   * - hubble.metrics.serviceMonitor.relabelings
+     - Relabeling configs for the ServiceMonitor hubble
+     - list
+     - ``[{"replacement":"${1}","sourceLabels":["__meta_kubernetes_pod_node_name"],"targetLabel":"node"}]``
    * - hubble.peerService.clusterDomain
      - The cluster domain to use to query the Hubble Peer service. It should be the local cluster.
      - string
@@ -797,6 +841,10 @@
      - Target Port for the Peer service.
      - int
      - ``4244``
+   * - hubble.preferIpv6
+     - Whether Hubble should prefer to announce IPv6 or IPv4 addresses if both are available.
+     - bool
+     - ``false``
    * - hubble.relay.affinity
      - Affinity for hubble-replay
      - object
@@ -856,7 +904,7 @@
    * - hubble.relay.prometheus
      - Enable prometheus metrics for hubble-relay on the configured port at /metrics
      - object
-     - ``{"enabled":false,"port":9966,"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null}}``
+     - ``{"enabled":false,"port":9966,"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null,"relabelings":null}}``
    * - hubble.relay.prometheus.serviceMonitor.annotations
      - Annotations to add to ServiceMonitor hubble-relay
      - object
@@ -875,6 +923,10 @@
      - ``{}``
    * - hubble.relay.prometheus.serviceMonitor.metricRelabelings
      - Metrics relabeling configs for the ServiceMonitor hubble-relay
+     - string
+     - ``nil``
+   * - hubble.relay.prometheus.serviceMonitor.relabelings
+     - Relabeling configs for the ServiceMonitor hubble-relay
      - string
      - ``nil``
    * - hubble.relay.replicas
@@ -953,6 +1005,10 @@
      - hubble-relay update strategy
      - object
      - ``{"rollingUpdate":{"maxUnavailable":1},"type":"RollingUpdate"}``
+   * - hubble.skipUnknownCGroupIDs
+     - Skip Hubble events with unknown cgroup ids
+     - bool
+     - ``true``
    * - hubble.socketPath
      - Unix domain socket path to listen to when Hubble is enabled.
      - string
@@ -1261,6 +1317,14 @@
      - Configure Kubernetes specific configuration
      - object
      - ``{}``
+   * - k8sServiceHost
+     - Kubernetes service host
+     - string
+     - ``""``
+   * - k8sServicePort
+     - Kubernetes service port
+     - string
+     - ``""``
    * - keepDeprecatedLabels
      - Keep the deprecated selector labels when deploying Cilium DaemonSet.
      - bool
@@ -1269,6 +1333,10 @@
      - Keep the deprecated probes when deploying Cilium DaemonSet
      - bool
      - ``false``
+   * - kubeConfigPath
+     - Kubernetes config path
+     - string
+     - ``"~/.kube/config"``
    * - kubeProxyReplacementHealthzBindAddr
      - healthz server bind address for the kube-proxy replacement. To enable set the value to '0.0.0.0:10256' for all ipv4 addresses and this '[::]:10256' for all ipv6 addresses. By default it is disabled.
      - string
@@ -1476,7 +1544,7 @@
    * - operator.prometheus
      - Enable prometheus metrics for cilium-operator on the configured port at /metrics
      - object
-     - ``{"enabled":false,"port":9963,"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null}}``
+     - ``{"enabled":false,"port":9963,"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null,"relabelings":null}}``
    * - operator.prometheus.serviceMonitor.annotations
      - Annotations to add to ServiceMonitor cilium-operator
      - object
@@ -1495,6 +1563,10 @@
      - ``{}``
    * - operator.prometheus.serviceMonitor.metricRelabelings
      - Metrics relabeling configs for the ServiceMonitor cilium-operator
+     - string
+     - ``nil``
+   * - operator.prometheus.serviceMonitor.relabelings
+     - Relabeling configs for the ServiceMonitor cilium-operator
      - string
      - ``nil``
    * - operator.removeNodeTaints
@@ -1521,6 +1593,10 @@
      - Set Node condition NetworkUnavailable to 'false' with the reason 'CiliumIsUp' for nodes that have a healthy Cilium pod.
      - bool
      - ``true``
+   * - operator.skipCNPStatusStartupClean
+     - Skip CNP node status clean up at operator startup.
+     - bool
+     - ``false``
    * - operator.skipCRDCreation
      - Skip CRDs creation for cilium-operator
      - bool
@@ -1545,6 +1621,10 @@
      - cilium-operator update strategy
      - object
      - ``{"rollingUpdate":{"maxSurge":1,"maxUnavailable":1},"type":"RollingUpdate"}``
+   * - pmtuDiscovery.enabled
+     - Enable path MTU discovery to send ICMP fragmentation-needed replies to the client.
+     - bool
+     - ``false``
    * - podAnnotations
      - Annotations to be added to agent pods
      - object
@@ -1640,7 +1720,7 @@
    * - prometheus
      - Configure prometheus metrics on the configured port at /metrics
      - object
-     - ``{"enabled":false,"metrics":null,"port":9962,"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null}}``
+     - ``{"enabled":false,"metrics":null,"port":9962,"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null,"relabelings":[{"replacement":"${1}","sourceLabels":["__meta_kubernetes_pod_node_name"],"targetLabel":"node"}]}}``
    * - prometheus.metrics
      - Metrics that should be enabled or disabled from the default metric list. (+metric_foo to enable metric_foo , -metric_bar to disable metric_bar). ref: https://docs.cilium.io/en/stable/operations/metrics/#exported-metrics
      - string
@@ -1665,6 +1745,10 @@
      - Metrics relabeling configs for the ServiceMonitor cilium-agent
      - string
      - ``nil``
+   * - prometheus.serviceMonitor.relabelings
+     - Relabeling configs for the ServiceMonitor cilium-agent
+     - list
+     - ``[{"replacement":"${1}","sourceLabels":["__meta_kubernetes_pod_node_name"],"targetLabel":"node"}]``
    * - proxy
      - Configure Istio proxy options.
      - object
@@ -1709,10 +1793,26 @@
      - Enable SCTP support. NOTE: Currently, SCTP support does not support rewriting ports or multihoming.
      - bool
      - ``false``
-   * - securityContext
-     - Security context to be added to agent pods
-     - object
-     - ``{"extraCapabilities":["DAC_OVERRIDE","FOWNER","SETGID","SETUID"],"privileged":false}``
+   * - securityContext.capabilities.applySysctlOverwrites
+     - capabilities for the ``apply-sysctl-overwrites`` init container
+     - list
+     - ``["SYS_ADMIN","SYS_CHROOT","SYS_PTRACE"]``
+   * - securityContext.capabilities.ciliumAgent
+     - Capabilities for the ``cilium-agent`` container
+     - list
+     - ``["CHOWN","KILL","NET_ADMIN","NET_RAW","IPC_LOCK","SYS_MODULE","SYS_ADMIN","SYS_RESOURCE","DAC_OVERRIDE","FOWNER","SETGID","SETUID"]``
+   * - securityContext.capabilities.cleanCiliumState
+     - Capabilities for the ``clean-cilium-state`` init container
+     - list
+     - ``["NET_ADMIN","SYS_MODULE","SYS_ADMIN","SYS_RESOURCE"]``
+   * - securityContext.capabilities.mountCgroup
+     - Capabilities for the ``mount-cgroup`` init container
+     - list
+     - ``["SYS_ADMIN","SYS_CHROOT","SYS_PTRACE"]``
+   * - securityContext.privileged
+     - Run the pod with elevated privileges
+     - bool
+     - ``false``
    * - serviceAccounts
      - Define serviceAccount names for components.
      - object
@@ -1749,6 +1849,14 @@
      - interval between checks of the startup probe
      - int
      - ``2``
+   * - statelessNat46x64
+     - Configure Stateless NAT46/NAT64 translation
+     - object
+     - ``{"enabled":false}``
+   * - statelessNat46x64.enabled
+     - Enable RFC8215-prefixed translation
+     - bool
+     - ``false``
    * - svcSourceRangeCheck
      - Enable check of service source ranges (currently, only for LoadBalancer).
      - bool

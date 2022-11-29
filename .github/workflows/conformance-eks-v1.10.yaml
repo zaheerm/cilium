@@ -98,7 +98,7 @@ jobs:
           echo "::set-output name=head::$(jq -r '.head.sha' pr.json)"
       - name: Check code changes
         if: ${{ github.event.issue.pull_request }}
-        uses: dorny/paths-filter@b2feaf19c27470162a626bd6fa8438ae5b263721
+        uses: dorny/paths-filter@4512585405083f25c027a35db413c2b3b9006d50
         id: tested-tree
         with:
           base: ${{ steps.pr.outputs.base }}
@@ -155,7 +155,7 @@ jobs:
           HUBBLE_ENABLE_DEFAULTS="--relay-image=quay.io/${{ env.QUAY_ORGANIZATION_DEV }}/hubble-relay-ci \
             --relay-version=${SHA}"
           CONNECTIVITY_TEST_DEFAULTS="--base-version=v1.10.12 \
-            --flow-validation=disabled"
+            --flow-validation=disabled --hubble=false"
           echo ::set-output name=cilium_install_defaults::${CILIUM_INSTALL_DEFAULTS}
           echo ::set-output name=hubble_enable_defaults::${HUBBLE_ENABLE_DEFAULTS}
           echo ::set-output name=connectivity_test_defaults::${CONNECTIVITY_TEST_DEFAULTS}
@@ -195,7 +195,7 @@ jobs:
           rm eksctl_$(uname -s)_amd64.tar.gz
 
       - name: Install helm
-        uses: azure/setup-helm@b5b231a831f96336bbfeccc1329990f0005c5bb1
+        uses: azure/setup-helm@f382f75448129b3be48f8121b9857be18d815a82
         with:
           # Due to the below issue, v3.8.2 is pinned currently to avoid
           # exec plugin: invalid apiVersion "client.authentication.k8s.io/v1alpha1"

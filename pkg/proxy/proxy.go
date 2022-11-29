@@ -46,6 +46,13 @@ type DatapathUpdater interface {
 	SupportsOriginalSourceAddr() bool
 }
 
+type IPCacheManager interface {
+	// AddListener is required for envoy.StartXDSServer()
+	AddListener(ipcache.IPIdentityMappingListener)
+
+	LookupByIP(IP string) (ipcache.Identity, bool)
+}
+
 type ProxyType string
 
 func (p ProxyType) String() string {
@@ -119,7 +126,7 @@ type Proxy struct {
 
 	// IPCache is used for tracking IP->Identity mappings and propagating
 	// them to the proxy via NPHDS in the cases described
-	ipcache *ipcache.IPCache
+	ipcache IPCacheManager
 
 	// defaultEndpointInfoRegistry is the default instance implementing the
 	// EndpointInfoRegistry interface.
@@ -131,7 +138,7 @@ type Proxy struct {
 func StartProxySupport(minPort uint16, maxPort uint16, stateDir string,
 	accessLogNotifier logger.LogRecordNotifier, accessLogMetadata []string,
 	datapathUpdater DatapathUpdater, mgr EndpointLookup,
-	ipcache *ipcache.IPCache) *Proxy {
+	ipcache IPCacheManager) *Proxy {
 	endpointManager = mgr
 	eir := newEndpointInfoRegistry(ipcache)
 	logger.SetEndpointInfoRegistry(eir)
@@ -339,6 +346,7 @@ func findProxyPortByType(l7Type ProxyType, ingress bool) (string, *ProxyPort) {
 	default:
 		// "Unknown" parsers are assumed to be Proxylib (TCP) parsers, which
 		// is registered with an empty string.
+		// This works also for explicit TCP and TLS parser types.
 		portType = ProxyTypeAny
 	}
 	// proxyPorts is small enough to not bother indexing it.

@@ -37,7 +37,7 @@ $ helm install cilium cilium/cilium --namespace=kube-system
 ```
 
 After Cilium is installed, you can explore the features that Cilium has to
-offer from the [Getting Started Guides page](https://docs.cilium.io/en/latest/gettingstarted/).
+offer from the [Getting Started Guides page](https://docs.cilium.io/en/stable/gettingstarted/).
 
 ## Source Code
 
@@ -75,8 +75,11 @@ contributors across the globe, there is almost always someone available to help.
 | bpf.ctAnyMax | int | `262144` | Configure the maximum number of entries for the non-TCP connection tracking table. |
 | bpf.ctTcpMax | int | `524288` | Configure the maximum number of entries in the TCP connection tracking table. |
 | bpf.hostBoot | string | `"/boot"` | Configure the path to the host boot directory |
+| bpf.hostLegacyRouting | bool | `false` | Configure whether direct routing mode should route traffic via host stack (true) or directly and more efficiently out of BPF (false) if the kernel supports it. The latter has the implication that it will also bypass netfilter in the host namespace. |
 | bpf.lbExternalClusterIP | bool | `false` | Allow cluster external access to ClusterIP services. |
 | bpf.lbMapMax | int | `65536` | Configure the maximum number of service entries in the load balancer maps. |
+| bpf.mapDynamicSizeRatio | float64 | `0.0025` | Configure auto-sizing for all BPF maps based on available memory. ref: https://docs.cilium.io/en/stable/concepts/ebpf/maps/#ebpf-maps |
+| bpf.masquerade | bool | `false` | Enable native IP masquerade support in eBPF |
 | bpf.monitorAggregation | string | `"medium"` | Configure the level of aggregation for monitor notifications. Valid options are none, low, medium, maximum. |
 | bpf.monitorFlags | string | `"all"` | Configure which TCP flags trigger notifications when seen for the first time in a connection. |
 | bpf.monitorInterval | string | `"5s"` | Configure the typical time between monitor notifications for active connections. |
@@ -86,6 +89,8 @@ contributors across the globe, there is almost always someone available to help.
 | bpf.policyMapMax | int | `16384` | Configure the maximum number of entries in endpoint policy map (per endpoint). |
 | bpf.preallocateMaps | bool | `false` | Enables pre-allocation of eBPF map values. This increases memory usage but can reduce latency. |
 | bpf.root | string | `"/sys/fs/bpf"` | Configure the mount point for the BPF filesystem |
+| bpf.tproxy | bool | `false` | Configure the eBPF-based TPROXY to reduce reliance on iptables rules for implementing Layer 7 policy. |
+| bpf.vlanBypass | list | `[]` | Configure explicitly allowed VLAN id's for bpf logic bypass. [0] will allow all VLAN id's without any filtering. |
 | certgen | object | `{"image":{"override":null,"pullPolicy":"Always","repository":"quay.io/cilium/certgen","tag":"v0.1.8@sha256:4a456552a5f192992a6edcec2febb1c54870d665173a33dc7d876129b199ddbd"},"podLabels":{},"tolerations":[],"ttlSecondsAfterFinished":1800}` | Configure certificate generation for Hubble integration. If hubble.tls.auto.method=cronJob, these values are used for the Kubernetes CronJob which will be scheduled regularly to (re)generate any certificates not provided manually. |
 | certgen.podLabels | object | `{}` | Labels to be added to hubble-certgen pods |
 | certgen.tolerations | list | `[]` | Node tolerations for pod assignment on nodes with taints ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/ |
@@ -149,7 +154,6 @@ contributors across the globe, there is almost always someone available to help.
 | customCalls | object | `{"enabled":false}` | Tail call hooks for custom eBPF programs. |
 | customCalls.enabled | bool | `false` | Enable tail call hooks for custom eBPF programs. |
 | daemon.runPath | string | `"/var/run/cilium"` | Configure where Cilium runtime state should be stored. |
-| datapathMode | string | `"veth"` | Configure which datapath mode should be used for configuring container connectivity. Valid options are "veth" or "ipvlan". Deprecated, to be removed in v1.12. |
 | debug.enabled | bool | `false` | Enable debug logging |
 | disableEndpointCRD | string | `"false"` | Disable the usage of CiliumEndpoint CRD. |
 | dnsPolicy | string | `""` | DNS policy for Cilium agent pods. Ref: https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-s-dns-policy |
@@ -230,6 +234,11 @@ contributors across the globe, there is almost always someone available to help.
 | extraHostPathMounts | list | `[]` | Additional agent hostPath mounts. |
 | extraVolumeMounts | list | `[]` | Additional agent volumeMounts. |
 | extraVolumes | list | `[]` | Additional agent volumes. |
+| gatewayAPI.enabled | bool | `false` | Enable support for Gateway API in cilium This will automatically set enable-envoy-config as well. |
+| gatewayAPI.secretsNamespace | object | `{"create":true,"name":"cilium-secrets","sync":true}` | SecretsNamespace is the namespace in which envoy SDS will retrieve TLS secrets from. |
+| gatewayAPI.secretsNamespace.create | bool | `true` | Create secrets namespace for Gateway API. |
+| gatewayAPI.secretsNamespace.name | string | `"cilium-secrets"` | Name of Gateway API secret namespace. |
+| gatewayAPI.secretsNamespace.sync | bool | `true` | Enable secret sync, which will make sure all TLS secrets used by Ingress are synced to secretsNamespace.name. If disabled, TLS secrets must be maintained externally. |
 | gke.enabled | bool | `false` | Enable Google Kubernetes Engine integration |
 | healthChecking | bool | `true` | Enable connectivity health checking. |
 | healthPort | int | `9879` | TCP port for the agent health API. This is not the port for cilium-health. |
@@ -238,7 +247,8 @@ contributors across the globe, there is almost always someone available to help.
 | hostPort.enabled | bool | `false` | Enable hostPort service support. |
 | hubble.enabled | bool | `true` | Enable Hubble (true by default). |
 | hubble.listenAddress | string | `":4244"` | An additional address for Hubble to listen to. Set this field ":4244" if you are enabling Hubble Relay, as it assumes that Hubble is listening on port 4244. |
-| hubble.metrics | object | `{"dashboards":{"annotations":{},"enabled":true,"label":"grafana_dashboard","labelValue":"1","namespace":null},"enabled":null,"port":9965,"serviceAnnotations":{},"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null}}` | Hubble metrics configuration. See https://docs.cilium.io/en/stable/operations/metrics/#hubble-metrics for more comprehensive documentation about Hubble metrics. |
+| hubble.metrics | object | `{"dashboards":{"annotations":{},"enabled":false,"label":"grafana_dashboard","labelValue":"1","namespace":null},"enableOpenMetrics":false,"enabled":null,"port":9965,"serviceAnnotations":{},"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null,"relabelings":[{"replacement":"${1}","sourceLabels":["__meta_kubernetes_pod_node_name"],"targetLabel":"node"}]}}` | Hubble metrics configuration. See https://docs.cilium.io/en/stable/operations/metrics/#hubble-metrics for more comprehensive documentation about Hubble metrics. |
+| hubble.metrics.enableOpenMetrics | bool | `false` | Enables exporting hubble metrics in OpenMetrics format. |
 | hubble.metrics.enabled | string | `nil` | Configures the list of metrics to collect. If empty or null, metrics are disabled. Example:    enabled:   - dns:query;ignoreAAAA   - drop   - tcp   - flow   - icmp   - http  You can specify the list of metrics from the helm CLI:    --set metrics.enabled="{dns:query;ignoreAAAA,drop,tcp,flow,icmp,http}"  |
 | hubble.metrics.port | int | `9965` | Configure the port the hubble metric server listens on. |
 | hubble.metrics.serviceAnnotations | object | `{}` | Annotations to be added to hubble-metrics service. |
@@ -247,9 +257,11 @@ contributors across the globe, there is almost always someone available to help.
 | hubble.metrics.serviceMonitor.interval | string | `"10s"` | Interval for scrape metrics. |
 | hubble.metrics.serviceMonitor.labels | object | `{}` | Labels to add to ServiceMonitor hubble |
 | hubble.metrics.serviceMonitor.metricRelabelings | string | `nil` | Metrics relabeling configs for the ServiceMonitor hubble |
+| hubble.metrics.serviceMonitor.relabelings | list | `[{"replacement":"${1}","sourceLabels":["__meta_kubernetes_pod_node_name"],"targetLabel":"node"}]` | Relabeling configs for the ServiceMonitor hubble |
 | hubble.peerService.clusterDomain | string | `"cluster.local"` | The cluster domain to use to query the Hubble Peer service. It should be the local cluster. |
 | hubble.peerService.enabled | bool | `true` | Enable a K8s Service for the Peer service, so that it can be accessed by a non-local client |
 | hubble.peerService.targetPort | int | `4244` | Target Port for the Peer service. |
+| hubble.preferIpv6 | bool | `false` | Whether Hubble should prefer to announce IPv6 or IPv4 addresses if both are available. |
 | hubble.relay.affinity | object | `{"podAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"labelSelector":{"matchLabels":{"k8s-app":"cilium"}},"topologyKey":"kubernetes.io/hostname"}]}}` | Affinity for hubble-replay |
 | hubble.relay.dialTimeout | string | `nil` | Dial timeout to connect to the local hubble instance to receive peer information (e.g. "30s"). |
 | hubble.relay.enabled | bool | `false` | Enable Hubble Relay (requires hubble.enabled=true) |
@@ -264,12 +276,13 @@ contributors across the globe, there is almost always someone available to help.
 | hubble.relay.podDisruptionBudget.minAvailable | string | `nil` | Minimum number/percentage of pods that should remain scheduled. When it's set, maxUnavailable must be disabled by `maxUnavailable: null` |
 | hubble.relay.podLabels | object | `{}` | Labels to be added to hubble-relay pods |
 | hubble.relay.priorityClassName | string | `""` | The priority class to use for hubble-relay |
-| hubble.relay.prometheus | object | `{"enabled":false,"port":9966,"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null}}` | Enable prometheus metrics for hubble-relay on the configured port at /metrics |
+| hubble.relay.prometheus | object | `{"enabled":false,"port":9966,"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null,"relabelings":null}}` | Enable prometheus metrics for hubble-relay on the configured port at /metrics |
 | hubble.relay.prometheus.serviceMonitor.annotations | object | `{}` | Annotations to add to ServiceMonitor hubble-relay |
 | hubble.relay.prometheus.serviceMonitor.enabled | bool | `false` | Enable service monitors. This requires the prometheus CRDs to be available (see https://github.com/prometheus-operator/prometheus-operator/blob/master/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml) |
 | hubble.relay.prometheus.serviceMonitor.interval | string | `"10s"` | Interval for scrape metrics. |
 | hubble.relay.prometheus.serviceMonitor.labels | object | `{}` | Labels to add to ServiceMonitor hubble-relay |
 | hubble.relay.prometheus.serviceMonitor.metricRelabelings | string | `nil` | Metrics relabeling configs for the ServiceMonitor hubble-relay |
+| hubble.relay.prometheus.serviceMonitor.relabelings | string | `nil` | Relabeling configs for the ServiceMonitor hubble-relay |
 | hubble.relay.replicas | int | `1` | Number of replicas run for the hubble-relay deployment. |
 | hubble.relay.resources | object | `{}` | Specifies the resources for the hubble-relay pods |
 | hubble.relay.retryTimeout | string | `nil` | Backoff duration to retry connecting to the local hubble instance in case of failure (e.g. "30s"). |
@@ -289,6 +302,7 @@ contributors across the globe, there is almost always someone available to help.
 | hubble.relay.tolerations | list | `[]` | Node tolerations for pod assignment on nodes with taints ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/  |
 | hubble.relay.topologySpreadConstraints | list | `[]` | Pod topology spread constraints for hubble-relay |
 | hubble.relay.updateStrategy | object | `{"rollingUpdate":{"maxUnavailable":1},"type":"RollingUpdate"}` | hubble-relay update strategy |
+| hubble.skipUnknownCGroupIDs | bool | `true` | Skip Hubble events with unknown cgroup ids |
 | hubble.socketPath | string | `"/var/run/cilium/hubble.sock"` | Unix domain socket path to listen to when Hubble is enabled. |
 | hubble.tls | object | `{"auto":{"certManagerIssuerRef":{},"certValidityDuration":1095,"enabled":true,"method":"helm","schedule":"0 0 1 */4 *"},"ca":{"cert":"","key":""},"enabled":true,"server":{"cert":"","extraDnsNames":[],"extraIpAddresses":[],"key":""}}` | TLS configuration for Hubble |
 | hubble.tls.auto | object | `{"certManagerIssuerRef":{},"certValidityDuration":1095,"enabled":true,"method":"helm","schedule":"0 0 1 */4 *"}` | Configure automatic TLS certificates generation. |
@@ -366,8 +380,11 @@ contributors across the globe, there is almost always someone available to help.
 | ipv6.enabled | bool | `false` | Enable IPv6 support. |
 | ipv6NativeRoutingCIDR | string | `""` | Allows to explicitly specify the IPv6 CIDR for native routing. When specified, Cilium assumes networking for this CIDR is preconfigured and hands traffic destined for that range to the Linux network stack without applying any SNAT. Generally speaking, specifying a native routing CIDR implies that Cilium can depend on the underlying networking stack to route packets to their destination. To offer a concrete example, if Cilium is configured to use direct routing and the Kubernetes CIDR is included in the native routing CIDR, the user must configure the routes to reach pods, either manually or by setting the auto-direct-node-routes flag. |
 | k8s | object | `{}` | Configure Kubernetes specific configuration |
+| k8sServiceHost | string | `""` | Kubernetes service host |
+| k8sServicePort | string | `""` | Kubernetes service port |
 | keepDeprecatedLabels | bool | `false` | Keep the deprecated selector labels when deploying Cilium DaemonSet. |
 | keepDeprecatedProbes | bool | `false` | Keep the deprecated probes when deploying Cilium DaemonSet |
+| kubeConfigPath | string | `"~/.kube/config"` | Kubernetes config path |
 | kubeProxyReplacementHealthzBindAddr | string | `""` | healthz server bind address for the kube-proxy replacement. To enable set the value to '0.0.0.0:10256' for all ipv4 addresses and this '[::]:10256' for all ipv6 addresses. By default it is disabled. |
 | l2NeighDiscovery.enabled | bool | `true` | Enable L2 neighbor discovery in the agent |
 | l2NeighDiscovery.refreshPeriod | string | `"30s"` | Override the agent's default neighbor resolution refresh period. |
@@ -419,24 +436,27 @@ contributors across the globe, there is almost always someone available to help.
 | operator.podDisruptionBudget.minAvailable | string | `nil` | Minimum number/percentage of pods that should remain scheduled. When it's set, maxUnavailable must be disabled by `maxUnavailable: null` |
 | operator.podLabels | object | `{}` | Labels to be added to cilium-operator pods |
 | operator.priorityClassName | string | `""` | The priority class to use for cilium-operator |
-| operator.prometheus | object | `{"enabled":false,"port":9963,"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null}}` | Enable prometheus metrics for cilium-operator on the configured port at /metrics |
+| operator.prometheus | object | `{"enabled":false,"port":9963,"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null,"relabelings":null}}` | Enable prometheus metrics for cilium-operator on the configured port at /metrics |
 | operator.prometheus.serviceMonitor.annotations | object | `{}` | Annotations to add to ServiceMonitor cilium-operator |
 | operator.prometheus.serviceMonitor.enabled | bool | `false` | Enable service monitors. This requires the prometheus CRDs to be available (see https://github.com/prometheus-operator/prometheus-operator/blob/master/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml) |
 | operator.prometheus.serviceMonitor.interval | string | `"10s"` | Interval for scrape metrics. |
 | operator.prometheus.serviceMonitor.labels | object | `{}` | Labels to add to ServiceMonitor cilium-operator |
 | operator.prometheus.serviceMonitor.metricRelabelings | string | `nil` | Metrics relabeling configs for the ServiceMonitor cilium-operator |
+| operator.prometheus.serviceMonitor.relabelings | string | `nil` | Relabeling configs for the ServiceMonitor cilium-operator |
 | operator.removeNodeTaints | bool | `true` | Remove Cilium node taint from Kubernetes nodes that have a healthy Cilium pod running. |
 | operator.replicas | int | `2` | Number of replicas to run for the cilium-operator deployment |
 | operator.resources | object | `{}` | cilium-operator resource limits & requests ref: https://kubernetes.io/docs/user-guide/compute-resources/ |
 | operator.rollOutPods | bool | `false` | Roll out cilium-operator pods automatically when configmap is updated. |
 | operator.securityContext | object | `{}` | Security context to be added to cilium-operator pods |
 | operator.setNodeNetworkStatus | bool | `true` | Set Node condition NetworkUnavailable to 'false' with the reason 'CiliumIsUp' for nodes that have a healthy Cilium pod. |
+| operator.skipCNPStatusStartupClean | bool | `false` | Skip CNP node status clean up at operator startup. |
 | operator.skipCRDCreation | bool | `false` | Skip CRDs creation for cilium-operator |
 | operator.tolerations | list | `[{"operator":"Exists"}]` | Node tolerations for cilium-operator scheduling to nodes with taints ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/ |
 | operator.topologySpreadConstraints | list | `[]` | Pod topology spread constraints for cilium-operator |
 | operator.unmanagedPodWatcher.intervalSeconds | int | `15` | Interval, in seconds, to check if there are any pods that are not managed by Cilium. |
 | operator.unmanagedPodWatcher.restart | bool | `true` | Restart any pod that are not managed by Cilium. |
 | operator.updateStrategy | object | `{"rollingUpdate":{"maxSurge":1,"maxUnavailable":1},"type":"RollingUpdate"}` | cilium-operator update strategy |
+| pmtuDiscovery.enabled | bool | `false` | Enable path MTU discovery to send ICMP fragmentation-needed replies to the client. |
 | podAnnotations | object | `{}` | Annotations to be added to agent pods |
 | podLabels | object | `{}` | Labels to be added to agent pods |
 | policyEnforcementMode | string | `"default"` | The agent can be put into one of the three policy enforcement modes: default, always and never. ref: https://docs.cilium.io/en/stable/policy/intro/#policy-enforcement-modes |
@@ -460,13 +480,14 @@ contributors across the globe, there is almost always someone available to help.
 | preflight.updateStrategy | object | `{"type":"RollingUpdate"}` | preflight update strategy |
 | preflight.validateCNPs | bool | `true` | By default we should always validate the installed CNPs before upgrading Cilium. This will make sure the user will have the policies deployed in the cluster with the right schema. |
 | priorityClassName | string | `""` | The priority class to use for cilium-agent. |
-| prometheus | object | `{"enabled":false,"metrics":null,"port":9962,"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null}}` | Configure prometheus metrics on the configured port at /metrics |
+| prometheus | object | `{"enabled":false,"metrics":null,"port":9962,"serviceMonitor":{"annotations":{},"enabled":false,"interval":"10s","labels":{},"metricRelabelings":null,"relabelings":[{"replacement":"${1}","sourceLabels":["__meta_kubernetes_pod_node_name"],"targetLabel":"node"}]}}` | Configure prometheus metrics on the configured port at /metrics |
 | prometheus.metrics | string | `nil` | Metrics that should be enabled or disabled from the default metric list. (+metric_foo to enable metric_foo , -metric_bar to disable metric_bar). ref: https://docs.cilium.io/en/stable/operations/metrics/#exported-metrics |
 | prometheus.serviceMonitor.annotations | object | `{}` | Annotations to add to ServiceMonitor cilium-agent |
 | prometheus.serviceMonitor.enabled | bool | `false` | Enable service monitors. This requires the prometheus CRDs to be available (see https://github.com/prometheus-operator/prometheus-operator/blob/master/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml) |
 | prometheus.serviceMonitor.interval | string | `"10s"` | Interval for scrape metrics. |
 | prometheus.serviceMonitor.labels | object | `{}` | Labels to add to ServiceMonitor cilium-agent |
 | prometheus.serviceMonitor.metricRelabelings | string | `nil` | Metrics relabeling configs for the ServiceMonitor cilium-agent |
+| prometheus.serviceMonitor.relabelings | list | `[{"replacement":"${1}","sourceLabels":["__meta_kubernetes_pod_node_name"],"targetLabel":"node"}]` | Relabeling configs for the ServiceMonitor cilium-agent |
 | proxy | object | `{"prometheus":{"enabled":true,"port":"9964"},"sidecarImageRegex":"cilium/istio_proxy"}` | Configure Istio proxy options. |
 | proxy.sidecarImageRegex | string | `"cilium/istio_proxy"` | Regular expression matching compatible Istio sidecar istio-proxy container image names |
 | rbac.create | bool | `true` | Enable creation of Resource-Based Access Control configuration. |
@@ -478,7 +499,11 @@ contributors across the globe, there is almost always someone available to help.
 | rollOutCiliumPods | bool | `false` | Roll out cilium agent pods automatically when configmap is updated. |
 | sctp | object | `{"enabled":false}` | SCTP Configuration Values |
 | sctp.enabled | bool | `false` | Enable SCTP support. NOTE: Currently, SCTP support does not support rewriting ports or multihoming. |
-| securityContext | object | `{"extraCapabilities":["DAC_OVERRIDE","FOWNER","SETGID","SETUID"],"privileged":false}` | Security context to be added to agent pods |
+| securityContext.capabilities.applySysctlOverwrites | list | `["SYS_ADMIN","SYS_CHROOT","SYS_PTRACE"]` | capabilities for the `apply-sysctl-overwrites` init container |
+| securityContext.capabilities.ciliumAgent | list | `["CHOWN","KILL","NET_ADMIN","NET_RAW","IPC_LOCK","SYS_MODULE","SYS_ADMIN","SYS_RESOURCE","DAC_OVERRIDE","FOWNER","SETGID","SETUID"]` | Capabilities for the `cilium-agent` container |
+| securityContext.capabilities.cleanCiliumState | list | `["NET_ADMIN","SYS_MODULE","SYS_ADMIN","SYS_RESOURCE"]` | Capabilities for the `clean-cilium-state` init container |
+| securityContext.capabilities.mountCgroup | list | `["SYS_ADMIN","SYS_CHROOT","SYS_PTRACE"]` | Capabilities for the `mount-cgroup` init container |
+| securityContext.privileged | bool | `false` | Run the pod with elevated privileges |
 | serviceAccounts | object | Component's fully qualified name. | Define serviceAccount names for components. |
 | serviceAccounts.clustermeshcertgen | object | `{"annotations":{},"create":true,"name":"clustermesh-apiserver-generate-certs"}` | Clustermeshcertgen is used if clustermesh.apiserver.tls.auto.method=cronJob |
 | serviceAccounts.hubblecertgen | object | `{"annotations":{},"create":true,"name":"hubble-generate-certs"}` | Hubblecertgen is used if hubble.tls.auto.method=cronJob |
@@ -488,6 +513,8 @@ contributors across the globe, there is almost always someone available to help.
 | sockops | object | `{"enabled":false}` | Configure BPF socket operations configuration |
 | startupProbe.failureThreshold | int | `105` | failure threshold of startup probe. 105 x 2s translates to the old behaviour of the readiness probe (120s delay + 30 x 3s) |
 | startupProbe.periodSeconds | int | `2` | interval between checks of the startup probe |
+| statelessNat46x64 | object | `{"enabled":false}` | Configure Stateless NAT46/NAT64 translation |
+| statelessNat46x64.enabled | bool | `false` | Enable RFC8215-prefixed translation |
 | svcSourceRangeCheck | bool | `true` | Enable check of service source ranges (currently, only for LoadBalancer). |
 | synchronizeK8sNodes | bool | `true` | Synchronize Kubernetes nodes to kvstore and perform CNP GC. |
 | terminationGracePeriodSeconds | int | `1` | Configure termination grace period for cilium-agent DaemonSet. |

@@ -23,7 +23,6 @@ func (h *tcpHandler) Init(registry *prometheus.Registry, options api.Options) er
 		return err
 	}
 	h.context = c
-
 	labels := []string{"flag", "family"}
 	labels = append(labels, h.context.GetLabelNames()...)
 
@@ -53,11 +52,11 @@ func (h *tcpHandler) ProcessFlow(ctx context.Context, flow *flowpb.Flow) error {
 		return nil
 	}
 
-	labels, err := h.context.GetLabelValues(flow)
+	contextLabels, err := h.context.GetLabelValues(flow)
 	if err != nil {
 		return err
 	}
-	labels = append(labels, "", ip.IpVersion.String())
+	labels := append([]string{"", ip.IpVersion.String()}, contextLabels...)
 
 	if tcp.Flags.FIN {
 		labels[0] = "FIN"

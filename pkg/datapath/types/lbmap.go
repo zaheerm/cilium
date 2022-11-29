@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of Cilium
+
 package types
 
 import (
@@ -48,6 +51,7 @@ type UpsertServiceParams struct {
 	UseMaglev                 bool
 	L7LBProxyPort             uint16                   // Non-zero for L7 LB services
 	Name                      loadbalancer.ServiceName // Fully qualified name of the service
+	LoopbackHostport          bool
 }
 
 // GetOrderedBackends returns an ordered list of backends with all the sorted

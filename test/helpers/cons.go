@@ -174,9 +174,9 @@ const (
 
 	// CiliumStableHelmChartVersion should be the chart version that points
 	// to the v1.X branch
-	CiliumStableHelmChartVersion = "1.11"
+	CiliumStableHelmChartVersion = "1.12"
 	CiliumStableVersion          = "v" + CiliumStableHelmChartVersion
-	CiliumLatestHelmChartVersion = "1.11.90"
+	CiliumLatestHelmChartVersion = "1.12.90"
 
 	MonitorLogFileName = "monitor.log"
 
@@ -229,9 +229,9 @@ const (
 	removeTransientRule = "Unable to process chain CILIUM_TRANSIENT_FORWARD with ip" // from https://github.com/cilium/cilium/issues/11276
 	missingIptablesWait = "Missing iptables wait arg (-w):"
 	localIDRestoreFail  = "Could not restore all CIDR identities" // from https://github.com/cilium/cilium/pull/19556
+	routerIPMismatch    = "Mismatch of router IPs found during restoration"
 
 	// ...and their exceptions.
-	lrpExists                = "local-redirect service exists for frontend"                         // cf. https://github.com/cilium/cilium/issues/16400
 	opCantBeFulfilled        = "Operation cannot be fulfilled on leases.coordination.k8s.io"        // cf. https://github.com/cilium/cilium/issues/16402
 	initLeaderElection       = "error initially creating leader election record: leases."           // cf. https://github.com/cilium/cilium/issues/16402#issuecomment-861544964
 	globalDataSupport        = "kernel doesn't support global data"                                 // cf. https://github.com/cilium/cilium/issues/16418
@@ -296,10 +296,11 @@ var badLogMessages = map[string][]string{
 	removeTransientRule: nil,
 	missingIptablesWait: nil,
 	localIDRestoreFail:  nil,
+	routerIPMismatch:    nil,
 	"DATA RACE":         nil,
 	// Exceptions for level=error should only be added as a last resort, if the
 	// error cannot be fixed in Cilium or in the test.
-	"level=error": {lrpExists, opCantBeFulfilled, initLeaderElection, globalDataSupport, removeInexistentID, failedToListCRDs, retrieveResLock, failedToRelLockEmptyName},
+	"level=error": {opCantBeFulfilled, initLeaderElection, globalDataSupport, removeInexistentID, failedToListCRDs, retrieveResLock, failedToRelLockEmptyName},
 }
 
 var ciliumCLICommands = map[string]string{

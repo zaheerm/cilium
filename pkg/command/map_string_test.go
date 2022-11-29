@@ -96,7 +96,19 @@ func TestGetStringMapString(t *testing.T) {
 			wantErr: assert.NoError,
 		},
 		{
-			name: "valid kv format with comma in value",
+			name: "valid kv format with a single key and commas in value",
+			args: args{
+				key:   "API_RATE_LIMIT",
+				value: "endpoint-create=rate-limit:10/s,rate-burst:10,parallel-requests:10,auto-adjust:true",
+			},
+			want: map[string]string{
+				"endpoint-create": "rate-limit:10/s,rate-burst:10,parallel-requests:10,auto-adjust:true",
+			},
+			wantErr: assert.NoError,
+		},
+
+		{
+			name: "valid kv format with multiple keys with commas in value",
 			args: args{
 				key:   "API_RATE_LIMIT",
 				value: "endpoint-create=rate-limit:10/s,rate-burst:10,parallel-requests:10,auto-adjust:true,endpoint-delete=rate-limit:10/s,rate-burst:10,parallel-requests:10,auto-adjust:true",
@@ -139,6 +151,17 @@ func TestGetStringMapString(t *testing.T) {
 			},
 			want: map[string]string{
 				"cluster": "my-cluster",
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "valid kv format with space",
+			args: args{
+				key:   "FOO_BAR",
+				value: "cluster=my cluster",
+			},
+			want: map[string]string{
+				"cluster": "my cluster",
 			},
 			wantErr: assert.NoError,
 		},
@@ -276,6 +299,13 @@ func Test_isValidKeyValuePair(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "valid format with multiple pairs with commas",
+			args: args{
+				str: "k1=v,1,k2=v2,,k3=,v3,k4=v,4,k4=v4,k4=v,4",
+			},
+			want: true,
+		},
+		{
 			name: "empty value",
 			args: args{
 				str: "",
@@ -299,12 +329,12 @@ func Test_isValidKeyValuePair(t *testing.T) {
 		{
 			name: "no pair at all",
 			args: args{
-				str: "here is the test",
+				str: "here-is-the-test",
 			},
 			want: false,
 		},
 		{
-			name: "ending with command",
+			name: "ending with comma",
 			args: args{
 				str: "k1=v1,k2=v2,",
 			},
@@ -332,9 +362,30 @@ func Test_isValidKeyValuePair(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "space in value",
+			name: "value starts with space",
+			args: args{
+				str: "k1= v1,k2=v2",
+			},
+			want: false,
+		},
+		{
+			name: "last value starts with space",
 			args: args{
 				str: "k1=v1,k2= v2",
+			},
+			want: false,
+		},
+		{
+			name: "value ends with space",
+			args: args{
+				str: "k1=v1 ,k2=v2",
+			},
+			want: false,
+		},
+		{
+			name: "last value ends with space",
+			args: args{
+				str: "k1=v1,k2=v2 ",
 			},
 			want: false,
 		},

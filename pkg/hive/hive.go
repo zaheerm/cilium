@@ -15,10 +15,10 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.uber.org/dig"
+	"go.uber.org/multierr"
 	"golang.org/x/sys/unix"
 
 	"github.com/cilium/cilium/pkg/hive/cell"
-	"github.com/cilium/cilium/pkg/hive/internal"
 	"github.com/cilium/cilium/pkg/logging"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 )
@@ -162,20 +162,27 @@ func (h *Hive) Run() error {
 	startCtx, cancel := context.WithTimeout(context.Background(), h.startTimeout)
 	defer cancel()
 
+	var errors []error
+
 	if err := h.Start(startCtx); err != nil {
-		return fmt.Errorf("failed to start: %w", err)
+		errors = append(errors, fmt.Errorf("failed to start: %w", err))
 	}
 
-	shutdownErr := h.waitForSignalOrShutdown()
+	// If start was successful, wait for Shutdown() or interrupt.
+	if len(errors) == 0 {
+		shutdownErr := h.waitForSignalOrShutdown()
+		if shutdownErr != nil {
+			errors = append(errors, shutdownErr)
+		}
+	}
 
 	stopCtx, cancel := context.WithTimeout(context.Background(), h.stopTimeout)
 	defer cancel()
 
 	if err := h.Stop(stopCtx); err != nil {
-		return fmt.Errorf("failed to stop: %w", err)
+		errors = append(errors, fmt.Errorf("failed to stop: %w", err))
 	}
-
-	return shutdownErr
+	return multierr.Combine(errors...)
 }
 
 func (h *Hive) waitForSignalOrShutdown() error {
@@ -276,32 +283,17 @@ func (h *Hive) Shutdown(opts ...ShutdownOption) {
 }
 
 func (h *Hive) PrintObjects() {
-	fmt.Printf("Cells:\n\n")
-	for _, c := range h.cells {
-		c.Info().Print(2, os.Stdout)
-		fmt.Println()
-	}
-
 	if err := h.populate(); err != nil {
 		log.WithError(err).Fatal("Failed to populate object graph")
 	}
 
-	fmt.Printf("Start hooks:\n\n")
-	for _, hook := range h.lifecycle.hooks {
-		if hook.OnStart == nil {
-			continue
-		}
-		fmt.Printf("  • %s\n", internal.FuncNameAndLocation(hook.OnStart))
+	fmt.Printf("Cells:\n\n")
+	ip := cell.NewInfoPrinter()
+	for _, c := range h.cells {
+		c.Info(h.container).Print(2, ip)
+		fmt.Println()
 	}
-
-	fmt.Printf("\nStop hooks:\n\n")
-	for i := len(h.lifecycle.hooks) - 1; i >= 0; i-- {
-		hook := h.lifecycle.hooks[i]
-		if hook.OnStop == nil {
-			continue
-		}
-		fmt.Printf("  • %s\n", internal.FuncNameAndLocation(hook.OnStop))
-	}
+	h.lifecycle.PrintHooks()
 }
 
 func (h *Hive) PrintDotGraph() {

@@ -373,6 +373,9 @@ const (
 	// EnableIngressController enables Ingress Controller
 	EnableIngressController = "enable-ingress-controller"
 
+	// EnableGatewayAPI enables Gateway API support
+	EnableGatewayAPI = "enable-gateway-api"
+
 	// EnableEnvoyConfig enables processing of CiliumClusterwideEnvoyConfig and CiliumEnvoyConfig CRDs
 	EnableEnvoyConfig = "enable-envoy-config"
 
@@ -493,20 +496,8 @@ const (
 	// EnableSocketLBTracing is the name for the option to enable the socket LB tracing
 	EnableSocketLBTracing = "trace-sock"
 
-	// EnableHostReachableServices is the name of the EnableHostReachableServices option
-	EnableHostReachableServices = "enable-host-reachable-services"
-
 	// BPFSocketLBHostnsOnly is the name of the BPFSocketLBHostnsOnly option
 	BPFSocketLBHostnsOnly = "bpf-lb-sock-hostns-only"
-
-	// HostReachableServicesProtos is the name of the HostReachableServicesProtos option
-	HostReachableServicesProtos = "host-reachable-services-protos"
-
-	// HostServicesTCP is the name of EnableHostServicesTCP config
-	HostServicesTCP = "tcp"
-
-	// HostServicesUDP is the name of EnableHostServicesUDP config
-	HostServicesUDP = "udp"
 
 	// TunnelName is the name of the Tunnel option
 	TunnelName = "tunnel"
@@ -678,6 +669,9 @@ const (
 
 	// EnableSCTPName is the name of the option to enable SCTP support
 	EnableSCTPName = "enable-sctp"
+
+	// EnableStatelessNat46X64 enables L3 based NAT46 and NAT64 translation
+	EnableStatelessNat46X64 = "enable-stateless-nat46x64"
 
 	// IPv6MCastDevice is the name of the option to select IPv6 multicast device
 	IPv6MCastDevice = "ipv6-mcast-device"
@@ -903,6 +897,10 @@ const (
 	// HubbleListenAddress specifies address for Hubble server to listen to.
 	HubbleListenAddress = "hubble-listen-address"
 
+	// HubblePreferIpv6 controls whether IPv6 or IPv4 addresses should be preferred for
+	// communication to agents, if both are available.
+	HubblePreferIpv6 = "hubble-prefer-ipv6"
+
 	// HubbleTLSDisabled allows the Hubble server to run on the given listen
 	// address without TLS.
 	HubbleTLSDisabled = "hubble-disable-tls"
@@ -949,12 +947,18 @@ const (
 	// EnableHubbleRecorderAPI specifies if the Hubble Recorder API should be served
 	EnableHubbleRecorderAPI = "enable-hubble-recorder-api"
 
+	// EnableHubbleOpenMetrics enables exporting hubble metrics in OpenMetrics format.
+	EnableHubbleOpenMetrics = "enable-hubble-open-metrics"
+
 	// HubbleRecorderStoragePath specifies the directory in which pcap files
 	// created via the Hubble Recorder API are stored
 	HubbleRecorderStoragePath = "hubble-recorder-storage-path"
 
 	// HubbleRecorderSinkQueueSize is the queue size for each recorder sink
 	HubbleRecorderSinkQueueSize = "hubble-recorder-sink-queue-size"
+
+	// HubbleSkipUnknownCGroupIDs specifies if events with unknown cgroup ids should be skipped
+	HubbleSkipUnknownCGroupIDs = "hubble-skip-unknown-cgroup-ids"
 
 	// DisableIptablesFeederRules specifies which chains will be excluded
 	// when installing the feeder rules
@@ -1088,9 +1092,24 @@ const (
 	// IngressSecretsNamespace is the namespace having tls secrets used by CEC.
 	IngressSecretsNamespace = "ingress-secrets-namespace"
 
+	// GatewayAPISecretsNamespace is the namespace having tls secrets used by CEC, originating from Gateway API.
+	GatewayAPISecretsNamespace = "gateway-api-secrets-namespace"
+
 	// EnableRuntimeDeviceDetection is the name of the option to enable detection
 	// of new and removed datapath devices during the agent runtime.
 	EnableRuntimeDeviceDetection = "enable-runtime-device-detection"
+
+	// EnablePMTUDiscovery enables path MTU discovery to send ICMP
+	// fragmentation-needed replies to the client (when needed).
+	EnablePMTUDiscovery = "enable-pmtu-discovery"
+
+	// BPFMapEventBuffers specifies what maps should have event buffers enabled,
+	// and the max size and TTL of events in the buffers should be.
+	BPFMapEventBuffers = "bpf-map-event-buffers"
+
+	// EnableStaleCiliumEndpointCleanup sets whether Cilium should perform cleanup of
+	// stale CiliumEndpoints during init.
+	EnableStaleCiliumEndpointCleanup = "enable-stale-cilium-endpoint-cleanup"
 )
 
 // Default string arguments
@@ -1162,6 +1181,13 @@ const (
 	// running and able to schedule endpoints.
 	WriteCNIConfigurationWhenReady = "write-cni-conf-when-ready"
 
+	// CNIExclusive tells the agent to remove other CNI configuration files
+	CNIExclusive = "cni-exclusive"
+
+	// CNILogFile is the path to a log file (on the host) for the CNI plugin
+	// binary to use for logging.
+	CNILogFile = "cni-log-file"
+
 	// EnableCiliumEndpointSlice enables the cilium endpoint slicing feature.
 	EnableCiliumEndpointSlice = "enable-cilium-endpoint-slice"
 )
@@ -1208,10 +1234,6 @@ const (
 
 	// NodePortAccelerationNative means we accelerate NodePort via native XDP in the driver (preferred)
 	NodePortAccelerationNative = XDPModeNative
-
-	// KubeProxyReplacementProbe specifies to auto-enable available features for
-	// kube-proxy replacement
-	KubeProxyReplacementProbe = "probe"
 
 	// KubeProxyReplacementPartial specifies to enable only selected kube-proxy
 	// replacement features (might panic)
@@ -1530,6 +1552,9 @@ type DaemonConfig struct {
 	// EnableIPv6 is true when IPv6 is enabled
 	EnableIPv6 bool
 
+	// EnableStatelessNat46X64 is true when L3 based NAT46 and NAT64 translation is enabled
+	EnableStatelessNat46X64 bool
+
 	// EnableIPv6NDP is true when NDP is enabled for IPv6
 	EnableIPv6NDP bool
 
@@ -1579,9 +1604,7 @@ type DaemonConfig struct {
 	DebugVerbose                  []string
 	EnableSocketLB                bool
 	EnableSocketLBTracing         bool
-	EnableHostServicesTCP         bool
-	EnableHostServicesUDP         bool
-	EnableHostServicesPeer        bool
+	EnableSocketLBPeer            bool
 	EnablePolicy                  string
 	EnableTracing                 bool
 	EnableUnreachableRoutes       bool
@@ -1617,6 +1640,7 @@ type DaemonConfig struct {
 	InstallEgressGatewayRoutes bool
 	EnableEnvoyConfig          bool
 	EnableIngressController    bool
+	EnableGatewayAPI           bool
 	EnvoyConfigTimeout         time.Duration
 	IPMasqAgentConfigPath      string
 	InstallIptRules            bool
@@ -1812,6 +1836,13 @@ type DaemonConfig struct {
 	// running and able to schedule endpoints.
 	WriteCNIConfigurationWhenReady string
 
+	// CNIExclusive, if true, directs the agent to remove all other CNI configuration files
+	CNIExclusive bool
+
+	// CNILogFile is a path on disk (on the host) for the CNI plugin binary to use
+	// for logging.
+	CNILogFile string
+
 	// EnableNodePort enables k8s NodePort service implementation in BPF
 	EnableNodePort bool
 
@@ -1855,9 +1886,9 @@ type DaemonConfig struct {
 	LoadBalancerRSSv6CIDR string
 	LoadBalancerRSSv6     net.IPNet
 
-	// LoadBalancerPMTUDiscovery indicates whether LB should reply with ICMP
-	// frag needed messages to client (when needed)
-	LoadBalancerPMTUDiscovery bool
+	// EnablePMTUDiscovery indicates whether to send ICMP fragmentation-needed
+	// replies to the client (when needed).
+	EnablePMTUDiscovery bool
 
 	// Maglev backend table size (M) per service. Must be prime number.
 	MaglevTableSize int
@@ -2015,6 +2046,10 @@ type DaemonConfig struct {
 	// HubbleListenAddress specifies address for Hubble to listen to.
 	HubbleListenAddress string
 
+	// HubblePreferIpv6 controls whether IPv6 or IPv4 addresses should be preferred for
+	// communication to agents, if both are available.
+	HubblePreferIpv6 bool
+
 	// HubbleTLSDisabled allows the Hubble server to run on the given listen
 	// address without TLS.
 	HubbleTLSDisabled bool
@@ -2061,12 +2096,18 @@ type DaemonConfig struct {
 	// EnableHubbleRecorderAPI specifies if the Hubble Recorder API should be served
 	EnableHubbleRecorderAPI bool
 
+	// EnableHubbleOpenMetrics enables exporting hubble metrics in OpenMetrics format.
+	EnableHubbleOpenMetrics bool
+
 	// HubbleRecorderStoragePath specifies the directory in which pcap files
 	// created via the Hubble Recorder API are stored
 	HubbleRecorderStoragePath string
 
 	// HubbleRecorderSinkQueueSize is the queue size for each recorder sink
 	HubbleRecorderSinkQueueSize int
+
+	// HubbleSkipUnknownCGroupIDs specifies if events with unknown cgroup ids should be skipped
+	HubbleSkipUnknownCGroupIDs bool
 
 	// EndpointStatus enables population of information in the
 	// CiliumEndpoint.Status resource
@@ -2217,8 +2258,19 @@ type DaemonConfig struct {
 	// Enables BGP control plane features.
 	EnableBGPControlPlane bool
 
-	// EnvoySecretNamespace for TLS secrets. Used by CiliumEnvoyConfig via SDS.
-	EnvoySecretNamespace string
+	// EnvoySecretNamespaces for TLS secrets. Used by CiliumEnvoyConfig via SDS.
+	EnvoySecretNamespaces []string
+
+	// BPFMapEventBuffers has configuration on what BPF map event buffers to enabled
+	// and configuration options for those.
+	BPFMapEventBuffers          map[string]string
+	BPFMapEventBuffersValidator func(val string) (string, error) `json:"-"`
+	bpfMapEventConfigs          BPFEventBufferConfigs
+
+	// EnableStaleCiliumEndpointCleanup enables cleanup routine during Cilium init.
+	// This will attempt to remove local CiliumEndpoints that are not managed by Cilium
+	// following Endpoint restoration.
+	EnableStaleCiliumEndpointCleanup bool
 }
 
 var (
@@ -2506,6 +2558,11 @@ func (c *DaemonConfig) K8sIngressControllerEnabled() bool {
 	return c.EnableIngressController
 }
 
+// K8sGatewayAPIEnabled returns true if Gateway API feature is enabled in Cilium
+func (c *DaemonConfig) K8sGatewayAPIEnabled() bool {
+	return c.EnableGatewayAPI
+}
+
 // DirectRoutingDeviceRequired return whether the Direct Routing Device is needed under
 // the current configuration.
 func (c *DaemonConfig) DirectRoutingDeviceRequired() bool {
@@ -2606,15 +2663,6 @@ func (c *DaemonConfig) Validate(vp *viper.Viper) error {
 		return fmt.Errorf("KVstoreLeaseTTL does not lie in required range(%ds, %ds)",
 			int64(defaults.LockLeaseTTL.Seconds()),
 			int64(defaults.KVstoreLeaseMaxTTL.Seconds()))
-	}
-
-	if c.WriteCNIConfigurationWhenReady != "" && c.ReadCNIConfiguration == "" {
-		return fmt.Errorf("%s must be set when using %s", ReadCNIConfiguration, WriteCNIConfigurationWhenReady)
-	}
-
-	if c.EnableSocketLB && !c.EnableHostServicesUDP && !c.EnableHostServicesTCP {
-		return fmt.Errorf("%s must be at minimum one of [%s,%s]",
-			HostReachableServicesProtos, HostServicesTCP, HostServicesUDP)
 	}
 
 	allowedEndpointStatusValues := EndpointStatusValuesMap()
@@ -2764,7 +2812,7 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	c.DisableCiliumEndpointCRD = vp.GetBool(DisableCiliumEndpointCRDName)
 	c.EgressMasqueradeInterfaces = vp.GetString(EgressMasqueradeInterfaces)
 	c.BPFSocketLBHostnsOnly = vp.GetBool(BPFSocketLBHostnsOnly)
-	c.EnableSocketLB = vp.GetBool(EnableHostReachableServices) || vp.GetBool(EnableSocketLB)
+	c.EnableSocketLB = vp.GetBool(EnableSocketLB)
 	c.EnableSocketLBTracing = vp.GetBool(EnableSocketLBTracing)
 	c.EnableRemoteNodeIdentity = vp.GetBool(EnableRemoteNodeIdentity)
 	c.EnableBPFTProxy = vp.GetBool(EnableBPFTProxy)
@@ -2850,6 +2898,7 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	c.InstallEgressGatewayRoutes = vp.GetBool(InstallEgressGatewayRoutes)
 	c.EnableEnvoyConfig = vp.GetBool(EnableEnvoyConfig)
 	c.EnableIngressController = vp.GetBool(EnableIngressController)
+	c.EnableGatewayAPI = vp.GetBool(EnableGatewayAPI)
 	c.EnvoyConfigTimeout = vp.GetDuration(EnvoyConfigTimeout)
 	c.IPMasqAgentConfigPath = vp.GetString(IPMasqAgentConfigPath)
 	c.InstallIptRules = vp.GetBool(InstallIptRules)
@@ -2883,6 +2932,8 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	c.TracePayloadlen = vp.GetInt(TracePayloadlen)
 	c.Version = vp.GetString(Version)
 	c.WriteCNIConfigurationWhenReady = vp.GetString(WriteCNIConfigurationWhenReady)
+	c.CNIExclusive = vp.GetBool(CNIExclusive)
+	c.CNILogFile = vp.GetString(CNILogFile)
 	c.PolicyTriggerInterval = vp.GetDuration(PolicyTriggerInterval)
 	c.CTMapEntriesTimeoutTCP = vp.GetDuration(CTMapEntriesTimeoutTCPName)
 	c.CTMapEntriesTimeoutAny = vp.GetDuration(CTMapEntriesTimeoutAnyName)
@@ -2906,11 +2957,12 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	c.BGPAnnouncePodCIDR = vp.GetBool(BGPAnnouncePodCIDR)
 	c.BGPConfigPath = vp.GetString(BGPConfigPath)
 	c.ExternalClusterIP = vp.GetBool(ExternalClusterIPName)
-
+	c.EnableStatelessNat46X64 = vp.GetBool(EnableStatelessNat46X64)
 	c.EnableIPv4Masquerade = vp.GetBool(EnableIPv4Masquerade) && c.EnableIPv4
 	c.EnableIPv6Masquerade = vp.GetBool(EnableIPv6Masquerade) && c.EnableIPv6
 	c.EnableBPFMasquerade = vp.GetBool(EnableBPFMasquerade)
 	c.DeriveMasqIPAddrFromDevice = vp.GetString(DeriveMasqIPAddrFromDevice)
+	c.EnablePMTUDiscovery = vp.GetBool(EnablePMTUDiscovery)
 
 	c.populateLoadBalancerSettings(vp)
 	c.populateDevices(vp)
@@ -2957,10 +3009,20 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 		c.AddressScopeMax = defaults.AddressScopeMax
 	}
 
+	if c.EnableStatelessNat46X64 {
+		if !c.EnableIPv4 || !c.EnableIPv6 {
+			log.Fatalf("--%s requires both --%s and --%s enabled",
+				EnableStatelessNat46X64, EnableIPv4Name, EnableIPv6Name)
+		}
+	}
+
 	ipv4NativeRoutingCIDR := vp.GetString(IPv4NativeRoutingCIDR)
 
 	if ipv4NativeRoutingCIDR != "" {
-		c.IPv4NativeRoutingCIDR = cidr.MustParseCIDR(ipv4NativeRoutingCIDR)
+		c.IPv4NativeRoutingCIDR, err = cidr.ParseCIDR(ipv4NativeRoutingCIDR)
+		if err != nil {
+			log.WithError(err).Fatalf("Unable to parse CIDR '%s'", ipv4NativeRoutingCIDR)
+		}
 
 		if len(c.IPv4NativeRoutingCIDR.IP) != net.IPv4len {
 			log.Fatalf("%s must be an IPv4 CIDR", IPv4NativeRoutingCIDR)
@@ -2975,7 +3037,10 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	ipv6NativeRoutingCIDR := vp.GetString(IPv6NativeRoutingCIDR)
 
 	if ipv6NativeRoutingCIDR != "" {
-		c.IPv6NativeRoutingCIDR = cidr.MustParseCIDR(ipv6NativeRoutingCIDR)
+		c.IPv6NativeRoutingCIDR, err = cidr.ParseCIDR(ipv6NativeRoutingCIDR)
+		if err != nil {
+			log.WithError(err).Fatalf("Unable to parse CIDR '%s'", ipv6NativeRoutingCIDR)
+		}
 
 		if len(c.IPv6NativeRoutingCIDR.IP) != net.IPv6len {
 			log.Fatalf("%s must be an IPv6 CIDR", IPv6NativeRoutingCIDR)
@@ -3014,6 +3079,8 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	c.ToFQDNsProxyPort = vp.GetInt(ToFQDNsProxyPort)
 	c.ToFQDNsPreCache = vp.GetString(ToFQDNsPreCache)
 	c.ToFQDNsEnableDNSCompression = vp.GetBool(ToFQDNsEnableDNSCompression)
+	c.ToFQDNsIdleConnectionGracePeriod = vp.GetDuration(ToFQDNsIdleConnectionGracePeriod)
+	c.FQDNProxyResponseMaxDelay = vp.GetDuration(FQDNProxyResponseMaxDelay)
 	c.DNSProxyConcurrencyLimit = vp.GetInt(DNSProxyConcurrencyLimit)
 	c.DNSProxyConcurrencyProcessingGracePeriod = vp.GetDuration(DNSProxyConcurrencyProcessingGracePeriod)
 
@@ -3041,11 +3108,6 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	err = c.populateNodePortRange(vp)
 	if err != nil {
 		log.WithError(err).Fatal("Failed to populate NodePortRange")
-	}
-
-	err = c.populateHostServicesProtos(vp)
-	if err != nil {
-		log.WithError(err).Fatal("Failed to populate HostReachableServicesProtos")
 	}
 
 	monitorAggregationFlags := vp.GetStringSlice(MonitorAggregationFlags)
@@ -3086,6 +3148,14 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 		log.Fatalf("unable to parse %s: %s", APIRateLimitName, err)
 	} else {
 		c.APIRateLimit = m
+	}
+
+	c.bpfMapEventConfigs = make(BPFEventBufferConfigs)
+	parseBPFMapEventConfigs(c.bpfMapEventConfigs, defaults.BPFEventBufferConfigs)
+	if m, err := command.GetStringMapStringE(vp, BPFMapEventBuffers); err != nil {
+		log.Fatalf("unable to parse %s: %s", BPFMapEventBuffers, err)
+	} else {
+		parseBPFMapEventConfigs(c.bpfMapEventConfigs, m)
 	}
 
 	for _, option := range vp.GetStringSlice(EndpointStatus) {
@@ -3159,8 +3229,10 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 
 	// Hubble options.
 	c.EnableHubble = vp.GetBool(EnableHubble)
+	c.EnableHubbleOpenMetrics = vp.GetBool(EnableHubbleOpenMetrics)
 	c.HubbleSocketPath = vp.GetString(HubbleSocketPath)
 	c.HubbleListenAddress = vp.GetString(HubbleListenAddress)
+	c.HubblePreferIpv6 = vp.GetBool(HubblePreferIpv6)
 	c.HubbleTLSDisabled = vp.GetBool(HubbleTLSDisabled)
 	c.HubbleTLSCertFile = vp.GetString(HubbleTLSCertFile)
 	c.HubbleTLSKeyFile = vp.GetString(HubbleTLSKeyFile)
@@ -3179,6 +3251,8 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	c.EnableHubbleRecorderAPI = vp.GetBool(EnableHubbleRecorderAPI)
 	c.HubbleRecorderStoragePath = vp.GetString(HubbleRecorderStoragePath)
 	c.HubbleRecorderSinkQueueSize = vp.GetInt(HubbleRecorderSinkQueueSize)
+	c.HubbleSkipUnknownCGroupIDs = vp.GetBool(HubbleSkipUnknownCGroupIDs)
+
 	c.DisableIptablesFeederRules = vp.GetStringSlice(DisableIptablesFeederRules)
 	c.EnableCiliumEndpointSlice = vp.GetBool(EnableCiliumEndpointSlice)
 
@@ -3196,6 +3270,7 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	c.EnableICMPRules = vp.GetBool(EnableICMPRules)
 	c.BypassIPAvailabilityUponRestore = vp.GetBool(BypassIPAvailabilityUponRestore)
 	c.EnableK8sTerminatingEndpoint = vp.GetBool(EnableK8sTerminatingEndpoint)
+	c.EnableStaleCiliumEndpointCleanup = vp.GetBool(EnableStaleCiliumEndpointCleanup)
 
 	// Disable Envoy version check if L7 proxy is disabled.
 	c.DisableEnvoyVersionCheck = vp.GetBool(DisableEnvoyVersionCheck)
@@ -3209,8 +3284,16 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	// Enable BGP control plane features
 	c.EnableBGPControlPlane = vp.GetBool(EnableBGPControlPlane)
 
-	// Envoy secrets namespace to watch
-	c.EnvoySecretNamespace = vp.GetString(IngressSecretsNamespace)
+	// Envoy secrets namespaces to watch
+	params := []string{IngressSecretsNamespace, GatewayAPISecretsNamespace}
+	var nsList = make([]string, 0, len(params))
+	for _, param := range params {
+		ns := vp.GetString(param)
+		if ns != "" {
+			nsList = append(nsList, ns)
+		}
+	}
+	c.EnvoySecretNamespaces = nsList
 }
 
 func (c *DaemonConfig) additionalMetrics() []string {
@@ -3306,32 +3389,6 @@ func (c *DaemonConfig) populateNodePortRange(vp *viper.Viper) error {
 	return nil
 }
 
-func (c *DaemonConfig) populateHostServicesProtos(vp *viper.Viper) error {
-	hostServicesProtos := vp.GetStringSlice(HostReachableServicesProtos)
-	// When passed via configmap, we might not get a slice but single
-	// string instead, so split it if needed.
-	if len(hostServicesProtos) == 1 {
-		hostServicesProtos = strings.Split(hostServicesProtos[0], ",")
-	}
-	if len(hostServicesProtos) > 2 {
-		return fmt.Errorf("More than two protocols for host reachable services not supported: %s",
-			hostServicesProtos)
-	}
-	for i := 0; i < len(hostServicesProtos); i++ {
-		switch strings.ToLower(hostServicesProtos[i]) {
-		case HostServicesTCP:
-			c.EnableHostServicesTCP = true
-		case HostServicesUDP:
-			c.EnableHostServicesUDP = true
-		default:
-			return fmt.Errorf("Protocol other than %s,%s not supported for host reachable services: %s",
-				HostServicesTCP, HostServicesUDP, hostServicesProtos[i])
-		}
-	}
-
-	return nil
-}
-
 func (c *DaemonConfig) checkMapSizeLimits() error {
 	if c.CTMapEntriesGlobalTCP < LimitTableMin || c.CTMapEntriesGlobalAny < LimitTableMin {
 		return fmt.Errorf("specified CT tables values %d/%d must exceed minimum %d",
@@ -3374,8 +3431,9 @@ func (c *DaemonConfig) checkMapSizeLimits() error {
 			c.PolicyMapEntries, PolicyMapMin)
 	}
 	if c.PolicyMapEntries > PolicyMapMax {
-		return fmt.Errorf("specified PolicyMap max entries %d must not exceed maximum %d",
+		log.Warnf("specified PolicyMap max entries %d must not exceed maximum %d, lowering it to the maximum value",
 			c.PolicyMapEntries, PolicyMapMax)
+		c.PolicyMapEntries = PolicyMapMax
 	}
 
 	if c.FragmentsMapEntries < FragmentsMapMin {
@@ -3492,7 +3550,7 @@ func (c *DaemonConfig) calculateBPFMapSizes(vp *viper.Viper) error {
 		c.calculateDynamicBPFMapSizes(vp, vms.Total, dynamicSizeRatio)
 		c.BPFMapsDynamicSizeRatio = dynamicSizeRatio
 	} else if dynamicSizeRatio < 0.0 {
-		return fmt.Errorf("specified dynamic map size ratio %f must be ≥ 0.0", dynamicSizeRatio)
+		return fmt.Errorf("specified dynamic map size ratio %f must be > 0.0", dynamicSizeRatio)
 	} else if dynamicSizeRatio > 1.0 {
 		return fmt.Errorf("specified dynamic map size ratio %f must be ≤ 1.0", dynamicSizeRatio)
 	}
@@ -3656,17 +3714,11 @@ func (c *DaemonConfig) validateVTEP(vp *viper.Viper) error {
 
 // KubeProxyReplacementFullyEnabled returns true if Cilium is _effectively_
 // running in full KPR mode.
-//
-// The extra logic to check that all the individual features are enabled is
-// required to deal with the case when KubeProxyReplacement mode is set to
-// "probe" (as Cilium may or may not be running full KPR mode).
 func (c *DaemonConfig) KubeProxyReplacementFullyEnabled() bool {
 	return c.EnableHostPort &&
 		c.EnableNodePort &&
 		c.EnableExternalIPs &&
 		c.EnableSocketLB &&
-		c.EnableHostServicesTCP &&
-		c.EnableHostServicesUDP &&
 		c.EnableSessionAffinity
 }
 
@@ -3907,4 +3959,69 @@ func MightAutoDetectDevices() bool {
 	return (Config.EnableHostFirewall && len(devices) == 0) ||
 		(Config.KubeProxyReplacement != KubeProxyReplacementDisabled &&
 			(len(devices) == 0 || Config.DirectRoutingDevice == ""))
+}
+
+// BPFEventBufferConfig contains parsed configuration for a bpf map event buffer.
+type BPFEventBufferConfig struct {
+	Enabled bool
+	MaxSize int
+	TTL     time.Duration
+}
+
+// BPFEventBufferConfigs contains parsed bpf event buffer configs, indexed but map name.
+type BPFEventBufferConfigs map[string]BPFEventBufferConfig
+
+// GetEventBufferConfig returns either the relevant config for a map name, or a default
+// one with enabled=false otherwise.
+func (d *DaemonConfig) GetEventBufferConfig(name string) BPFEventBufferConfig {
+	return d.bpfMapEventConfigs.get(name)
+}
+
+func (cs BPFEventBufferConfigs) get(name string) BPFEventBufferConfig {
+	return cs[name]
+}
+
+// ParseEventBufferTupleString parses a event buffer configuration tuple string.
+// For example: true,100,24h
+// Which refers to enabled=true, maxSize=100, ttl=24hours.
+func ParseEventBufferTupleString(optsStr string) (BPFEventBufferConfig, error) {
+	opts := strings.Split(optsStr, ",")
+	enabled := false
+	conf := BPFEventBufferConfig{}
+	if len(opts) != 3 {
+		return conf, fmt.Errorf("unexpected event buffer config value format, should be in format 'mapname=enabled,100,24h'")
+	}
+
+	if opts[0] != "enabled" && opts[0] != "disabled" {
+		return conf, fmt.Errorf("could not parse event buffer enabled: must be either 'enabled' or 'disabled'")
+	}
+	if opts[0] == "enabled" {
+		enabled = true
+	}
+	size, err := strconv.Atoi(opts[1])
+	if err != nil {
+		return conf, fmt.Errorf("could not parse event buffer maxSize int: %w", err)
+	}
+	ttl, err := time.ParseDuration(opts[2])
+	if err != nil {
+		return conf, fmt.Errorf("could not parse event buffer ttl duration: %w", err)
+	}
+	if size < 0 {
+		return conf, fmt.Errorf("event buffer max size cannot be less than zero (%d)", conf.MaxSize)
+	}
+	conf.TTL = ttl
+	conf.Enabled = enabled && size != 0
+	conf.MaxSize = size
+	return conf, nil
+}
+
+func parseBPFMapEventConfigs(confs BPFEventBufferConfigs, confMap map[string]string) error {
+	for name, confStr := range confMap {
+		conf, err := ParseEventBufferTupleString(confStr)
+		if err != nil {
+			return fmt.Errorf("unable to parse %s: %s", BPFMapEventBuffers, err)
+		}
+		confs[name] = conf
+	}
+	return nil
 }

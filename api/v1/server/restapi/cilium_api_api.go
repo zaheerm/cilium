@@ -135,6 +135,9 @@ func NewCiliumAPIAPI(spec *loads.Document) *CiliumAPIAPI {
 		DaemonGetMapNameHandler: daemon.GetMapNameHandlerFunc(func(params daemon.GetMapNameParams) middleware.Responder {
 			return middleware.NotImplemented("operation daemon.GetMapName has not yet been implemented")
 		}),
+		DaemonGetMapNameEventsHandler: daemon.GetMapNameEventsHandlerFunc(func(params daemon.GetMapNameEventsParams) middleware.Responder {
+			return middleware.NotImplemented("operation daemon.GetMapNameEvents has not yet been implemented")
+		}),
 		MetricsGetMetricsHandler: metrics.GetMetricsHandlerFunc(func(params metrics.GetMetricsParams) middleware.Responder {
 			return middleware.NotImplemented("operation metrics.GetMetrics has not yet been implemented")
 		}),
@@ -217,9 +220,11 @@ type CiliumAPIAPI struct {
 	// BasicAuthenticator generates a runtime.Authenticator from the supplied basic auth function.
 	// It has a default implementation in the security package, however you can replace it for your particular usage.
 	BasicAuthenticator func(security.UserPassAuthentication) runtime.Authenticator
+
 	// APIKeyAuthenticator generates a runtime.Authenticator from the supplied token auth function.
 	// It has a default implementation in the security package, however you can replace it for your particular usage.
 	APIKeyAuthenticator func(string, string, security.TokenAuthentication) runtime.Authenticator
+
 	// BearerAuthenticator generates a runtime.Authenticator from the supplied bearer token auth function.
 	// It has a default implementation in the security package, however you can replace it for your particular usage.
 	BearerAuthenticator func(string, security.ScopedTokenAuthentication) runtime.Authenticator
@@ -286,6 +291,8 @@ type CiliumAPIAPI struct {
 	DaemonGetMapHandler daemon.GetMapHandler
 	// DaemonGetMapNameHandler sets the operation handler for the get map name operation
 	DaemonGetMapNameHandler daemon.GetMapNameHandler
+	// DaemonGetMapNameEventsHandler sets the operation handler for the get map name events operation
+	DaemonGetMapNameEventsHandler daemon.GetMapNameEventsHandler
 	// MetricsGetMetricsHandler sets the operation handler for the get metrics operation
 	MetricsGetMetricsHandler metrics.GetMetricsHandler
 	// PolicyGetPolicyHandler sets the operation handler for the get policy operation
@@ -328,6 +335,7 @@ type CiliumAPIAPI struct {
 	RecorderPutRecorderIDHandler recorder.PutRecorderIDHandler
 	// ServicePutServiceIDHandler sets the operation handler for the put service ID operation
 	ServicePutServiceIDHandler service.PutServiceIDHandler
+
 	// ServeError is called when an error is received, there is a default handler
 	// but you can set your own with this
 	ServeError func(http.ResponseWriter, *http.Request, error)
@@ -484,6 +492,9 @@ func (o *CiliumAPIAPI) Validate() error {
 	}
 	if o.DaemonGetMapNameHandler == nil {
 		unregistered = append(unregistered, "daemon.GetMapNameHandler")
+	}
+	if o.DaemonGetMapNameEventsHandler == nil {
+		unregistered = append(unregistered, "daemon.GetMapNameEventsHandler")
 	}
 	if o.MetricsGetMetricsHandler == nil {
 		unregistered = append(unregistered, "metrics.GetMetricsHandler")
@@ -744,6 +755,10 @@ func (o *CiliumAPIAPI) initHandlerCache() {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}
 	o.handlers["GET"]["/map/{name}"] = daemon.NewGetMapName(o.context, o.DaemonGetMapNameHandler)
+	if o.handlers["GET"] == nil {
+		o.handlers["GET"] = make(map[string]http.Handler)
+	}
+	o.handlers["GET"]["/map/{name}/events"] = daemon.NewGetMapNameEvents(o.context, o.DaemonGetMapNameEventsHandler)
 	if o.handlers["GET"] == nil {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}

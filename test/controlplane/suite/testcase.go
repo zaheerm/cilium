@@ -37,7 +37,6 @@ import (
 	fakeDatapath "github.com/cilium/cilium/pkg/datapath/fake"
 	fqdnproxy "github.com/cilium/cilium/pkg/fqdn/proxy"
 	ipamOption "github.com/cilium/cilium/pkg/ipam/option"
-	"github.com/cilium/cilium/pkg/k8s"
 	cilium_v2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2"
 	k8sClient "github.com/cilium/cilium/pkg/k8s/client"
 	slim_corev1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/api/core/v1"
@@ -104,7 +103,6 @@ func (cpt *ControlPlaneTest) SetupEnvironment(modConfig func(*agentOption.Daemon
 
 	// Configure k8s and perform capability detection with the fake client.
 	version.Update(cpt.clients, true)
-	k8s.SetClients(cpt.clients, cpt.clients.Slim(), cpt.clients, cpt.clients)
 
 	agentOption.Config.Populate(agentCmd.Vp)
 	agentOption.Config.IdentityAllocationMode = agentOption.IdentityAllocationModeCRD
@@ -141,7 +139,7 @@ func (cpt *ControlPlaneTest) StartAgent() *ControlPlaneTest {
 	if cpt.agentHandle != nil {
 		cpt.t.Fatal("StartAgent() already called")
 	}
-	datapath, agentHandle, err := startCiliumAgent(cpt.nodeName, cpt.clients)
+	datapath, agentHandle, err := startCiliumAgent(cpt.t, cpt.nodeName, cpt.clients)
 	if err != nil {
 		cpt.t.Fatalf("Failed to start cilium agent: %s", err)
 	}

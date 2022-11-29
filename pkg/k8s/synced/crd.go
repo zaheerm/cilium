@@ -21,6 +21,7 @@ import (
 	"github.com/cilium/cilium/pkg/k8s"
 	v2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2"
 	v2alpha1 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
+	"github.com/cilium/cilium/pkg/k8s/client"
 	"github.com/cilium/cilium/pkg/k8s/informer"
 	slim_metav1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1"
 	k8sversion "github.com/cilium/cilium/pkg/k8s/version"
@@ -64,8 +65,9 @@ func agentCRDResourceNames() []string {
 	}
 	if option.Config.EnableBGPControlPlane {
 		result = append(result, CRDResourceName(v2alpha1.BGPPName))
-		result = append(result, CRDResourceName(v2alpha1.BGPPoolName))
 	}
+
+	result = append(result, CRDResourceName(v2alpha1.LBIPPoolName))
 
 	return result
 }
@@ -86,11 +88,11 @@ func AllCRDResourceNames() []string {
 // installed inside the K8s cluster. These CRDs are added by the
 // Cilium Operator. This function will block until it finds all the
 // CRDs or if a timeout occurs.
-func SyncCRDs(ctx context.Context, crdNames []string, rs *Resources, ag *APIGroups) error {
+func SyncCRDs(ctx context.Context, clientset client.Clientset, crdNames []string, rs *Resources, ag *APIGroups) error {
 	crds := newCRDState(crdNames)
 
 	listerWatcher := newListWatchFromClient(
-		newCRDGetter(k8s.WatcherAPIExtClient()),
+		newCRDGetter(clientset),
 		fields.Everything(),
 	)
 	_, crdController := informer.NewInformer(

@@ -26,8 +26,8 @@ helm template --validate install/kubernetes/cilium \
   --set ipv4.enabled=true \
   --set ipv6.enabled=true \
   --set identityChangeGracePeriod="0s" \
-  --set kubeProxyReplacement=probe \
   --set cni.chainingMode=portmap \
+  --set sessionAffinity=true \
   > cilium.yaml
 
 kubectl apply -f cilium.yaml
@@ -70,7 +70,7 @@ test -d kubernetes && rm -rfv kubernetes
 git clone https://github.com/kubernetes/kubernetes.git -b ${KUBERNETES_VERSION} --depth 1
 cd kubernetes
 
-GO_VERSION="1.19.2"
+GO_VERSION="1.19.3"
 sudo rm -fr /usr/local/go
 curl -LO https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz
 sudo tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz

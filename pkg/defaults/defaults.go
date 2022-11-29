@@ -23,6 +23,9 @@ const (
 	// PprofPortAgent is the default value for pprof in the operator
 	PprofPortOperator = 6061
 
+	// PprofPortAPIServer is the default value for pprof in the clustermesh-apiserver
+	PprofPortAPIServer = 6063
+
 	// GopsPortAgent is the default value for option.GopsPort in the agent
 	GopsPortAgent = 9890
 
@@ -135,6 +138,11 @@ const (
 	// previously active connections with expired DNS lookups are
 	// still considered alive
 	ToFQDNsIdleConnectionGracePeriod = 0 * time.Second
+
+	// FQDNProxyResponseMaxDelay The maximum time the DNS proxy holds an allowed
+	// DNS response before sending it along. Responses are sent as soon as the
+	//datapath is updated with the new IP information.
+	FQDNProxyResponseMaxDelay = 100 * time.Millisecond
 
 	// ToFQDNsPreCache is a path to a file with DNS cache data to insert into the
 	// global cache on startup.
@@ -312,9 +320,9 @@ const (
 	LoopbackIPv4 = "169.254.42.1"
 
 	// ForceLocalPolicyEvalAtSource is the default value for
-	// option.ForceLocalPolicyEvalAtSource. It is enabled by default to
-	// provide backwards compatibility, it can be disabled via an option
-	ForceLocalPolicyEvalAtSource = true
+	// option.ForceLocalPolicyEvalAtSource. It can be enabled to provide
+	// backwards compatibility.
+	ForceLocalPolicyEvalAtSource = false
 
 	// EnableEndpointRoutes is the value for option.EnableEndpointRoutes.
 	// It is disabled by default for backwards compatibility.
@@ -506,4 +514,21 @@ const (
 
 	// Enable BGP control plane features.
 	EnableBGPControlPlane = false
+)
+
+var (
+	// BPFEventBufferConfigs contains default configuration entries for bpf map event buffers.
+	// These are to be merged with the client configuration to create the final config.
+	// Note: The TTL corresponds to GC interval times, which is a somewhat expensive operation.
+	// Under the worst case GC may need to memcopy almost the entire buffer, which will
+	// cause memory spikes. Be mindful of this when increasing the default buffer configurations.
+	BPFEventBufferConfigs = map[string]string{
+		"cilium_lxc": "enabled,128,0",
+		// cilium_ipcache is the likely the most useful use of this feature, but also has
+		// the highest churn.
+		"cilium_ipcache":         "enabled,1024,0",
+		"cilium_lb4_services_v2": "enabled,128,0",
+		"cilium_lb4_backends_v2": "enabled,128,0",
+		"cilium_lb4_reverse_nat": "enabled,128,0",
+	}
 )

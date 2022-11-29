@@ -21,16 +21,21 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 
+	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/asm"
+
 	"github.com/cilium/cilium/pkg/annotation"
 	"github.com/cilium/cilium/pkg/bandwidth"
 	cmtypes "github.com/cilium/cilium/pkg/clustermesh/types"
 	"github.com/cilium/cilium/pkg/comparator"
 	"github.com/cilium/cilium/pkg/controller"
+	"github.com/cilium/cilium/pkg/datapath/linux/probes"
 	"github.com/cilium/cilium/pkg/endpoint"
 	"github.com/cilium/cilium/pkg/endpoint/regeneration"
 	"github.com/cilium/cilium/pkg/identity"
 	"github.com/cilium/cilium/pkg/ipcache"
 	"github.com/cilium/cilium/pkg/k8s"
+	"github.com/cilium/cilium/pkg/k8s/client"
 	"github.com/cilium/cilium/pkg/k8s/informer"
 	slim_corev1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/api/core/v1"
 	slim_metav1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1"
@@ -48,6 +53,7 @@ import (
 	nodeTypes "github.com/cilium/cilium/pkg/node/types"
 	"github.com/cilium/cilium/pkg/option"
 	"github.com/cilium/cilium/pkg/policy"
+	"github.com/cilium/cilium/pkg/service"
 	"github.com/cilium/cilium/pkg/source"
 	"github.com/cilium/cilium/pkg/u8proto"
 )
@@ -341,7 +347,7 @@ func (k *K8sWatcher) updateK8sPodV1(oldK8sPod, newK8sPod *slim_corev1.Pod) error
 		}
 
 		// Synchronize Pod labels with CiliumEndpoint labels if there is a change.
-		updateCiliumEndpointLabels(podEP, newPodLabels)
+		updateCiliumEndpointLabels(k.clientset, podEP, newPodLabels)
 	}
 
 	if annotationsChanged {
@@ -393,7 +399,7 @@ func realizePodAnnotationUpdate(podEP *endpoint.Endpoint) {
 
 // updateCiliumEndpointLabels runs a controller associated with the endpoint that updates
 // the Labels in CiliumEndpoint object by mirroring those of the associated Pod.
-func updateCiliumEndpointLabels(ep *endpoint.Endpoint, labels map[string]string) {
+func updateCiliumEndpointLabels(clientset client.Clientset, ep *endpoint.Endpoint, labels map[string]string) {
 	var (
 		controllerName = fmt.Sprintf("sync-pod-labels-with-cilium-endpoint (%v)", ep.GetID())
 		scopedLog      = log.WithField("controller", controllerName)
@@ -413,7 +419,7 @@ func updateCiliumEndpointLabels(ep *endpoint.Endpoint, labels map[string]string)
 					}).Debug(err)
 					return err
 				}
-				ciliumClient := k8s.CiliumClient().CiliumV2()
+				ciliumClient := clientset.CiliumV2()
 
 				replaceLabels := []k8s.JSONPatch{
 					{
@@ -479,6 +485,19 @@ func (k *K8sWatcher) deleteK8sPodV1(pod *slim_corev1.Pod) error {
 	return err
 }
 
+var (
+	_netnsCookieSupported     bool
+	_netnsCookieSupportedOnce sync.Once
+)
+
+func netnsCookieSupported() bool {
+	_netnsCookieSupportedOnce.Do(func() {
+		_netnsCookieSupported = probes.HaveProgramHelper(ebpf.CGroupSock, asm.FnGetNetnsCookie) == nil &&
+			probes.HaveProgramHelper(ebpf.CGroupSockAddr, asm.FnGetNetnsCookie) == nil
+	})
+	return _netnsCookieSupported
+}
+
 func (k *K8sWatcher) genServiceMappings(pod *slim_corev1.Pod, podIPs []string, logger *logrus.Entry) []loadbalancer.SVC {
 	var (
 		svcs       []loadbalancer.SVC
@@ -500,9 +519,8 @@ func (k *K8sWatcher) genServiceMappings(pod *slim_corev1.Pod, podIPs []string, l
 			}
 
 			feIP := net.ParseIP(p.HostIP)
-			if feIP != nil && feIP.IsLoopback() {
-				logger.Warningf("The requested loopback address for hostIP (%s) is not supported. Ignoring.",
-					feIP)
+			if feIP != nil && feIP.IsLoopback() && !netnsCookieSupported() {
+				logger.Warningf("The requested loopback address for hostIP (%s) is not supported for kernels which don't provide netns cookies. Ignoring.", feIP)
 				continue
 			}
 
@@ -532,12 +550,24 @@ func (k *K8sWatcher) genServiceMappings(pod *slim_corev1.Pod, podIPs []string, l
 			}
 
 			var nodeAddrAll [][]net.IP
+			loopbackHostport := false
 
 			// When HostIP is explicitly set, then we need to expose *only*
 			// on this address but not via other addresses. When it's not set,
 			// then expose via all local addresses. Same when the user provides
 			// an unspecified address (0.0.0.0 / [::]).
 			if feIP != nil && !feIP.IsUnspecified() {
+				// Migrate the loopback address into a 0.0.0.0 / [::]
+				// surrogate, thus internal datapath handling can be
+				// streamlined. It's not exposed for traffic from outside.
+				if feIP.IsLoopback() {
+					if feIP.To4() != nil {
+						feIP = net.IPv4zero
+					} else {
+						feIP = net.IPv6zero
+					}
+					loopbackHostport = true
+				}
 				nodeAddrAll = [][]net.IP{
 					{feIP},
 				}
@@ -569,20 +599,22 @@ func (k *K8sWatcher) genServiceMappings(pod *slim_corev1.Pod, podIPs []string, l
 						if option.Config.EnableIPv4 && len(bes4) > 0 {
 							svcs = append(svcs,
 								loadbalancer.SVC{
-									Frontend:      fe,
-									Backends:      bes4,
-									Type:          loadbalancer.SVCTypeHostPort,
-									TrafficPolicy: loadbalancer.SVCTrafficPolicyCluster,
+									Frontend:         fe,
+									Backends:         bes4,
+									Type:             loadbalancer.SVCTypeHostPort,
+									TrafficPolicy:    loadbalancer.SVCTrafficPolicyCluster,
+									LoopbackHostport: loopbackHostport,
 								})
 						}
 					} else {
 						if option.Config.EnableIPv6 && len(bes6) > 0 {
 							svcs = append(svcs,
 								loadbalancer.SVC{
-									Frontend:      fe,
-									Backends:      bes6,
-									Type:          loadbalancer.SVCTypeHostPort,
-									TrafficPolicy: loadbalancer.SVCTrafficPolicyCluster,
+									Frontend:         fe,
+									Backends:         bes6,
+									Type:             loadbalancer.SVCTypeHostPort,
+									TrafficPolicy:    loadbalancer.SVCTrafficPolicyCluster,
+									LoopbackHostport: loopbackHostport,
 								})
 						}
 					}
@@ -653,10 +685,15 @@ func (k *K8sWatcher) upsertHostPortMapping(oldPod, newPod *slim_corev1.Pod, oldP
 				Name:      fmt.Sprintf("%s/host-port/%d", newPod.ObjectMeta.Name, dpSvc.Frontend.L3n4Addr.Port),
 				Namespace: newPod.ObjectMeta.Namespace,
 			},
+			LoopbackHostport: dpSvc.LoopbackHostport,
 		}
 
 		if _, _, err := k.svcManager.UpsertService(p); err != nil {
-			logger.WithError(err).Error("Error while inserting service in LB map")
+			if errors.Is(err, service.NewErrLocalRedirectServiceExists(p.Frontend, p.Name)) {
+				logger.WithError(err).Debug("Error while inserting service in LB map")
+			} else {
+				logger.WithError(err).Error("Error while inserting service in LB map")
+			}
 			return err
 		}
 	}

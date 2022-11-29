@@ -248,10 +248,6 @@ func (h *HeaderfileWriter) WriteNodeConfig(w io.Writer, cfg *datapath.LocalNodeC
 		cDefinesMap["ENABLE_TPROXY"] = "1"
 	}
 
-	if option.Config.EncryptNode {
-		cDefinesMap["ENCRYPT_NODE"] = "1"
-	}
-
 	if option.Config.EnableXDPPrefilter {
 		cDefinesMap["ENABLE_PREFILTER"] = "1"
 	}
@@ -269,20 +265,13 @@ func (h *HeaderfileWriter) WriteNodeConfig(w io.Writer, cfg *datapath.LocalNodeC
 	}
 
 	if option.Config.EnableSocketLB {
-		if option.Config.EnableHostServicesTCP {
-			cDefinesMap["ENABLE_SOCKET_LB_TCP"] = "1"
-		}
-		if option.Config.EnableHostServicesUDP {
-			cDefinesMap["ENABLE_SOCKET_LB_UDP"] = "1"
-		}
-		if option.Config.EnableHostServicesTCP && option.Config.EnableHostServicesUDP && !option.Config.BPFSocketLBHostnsOnly {
-			cDefinesMap["ENABLE_SOCKET_LB_FULL"] = "1"
-		}
-		if option.Config.EnableHostServicesPeer {
-			cDefinesMap["ENABLE_SOCKET_LB_PEER"] = "1"
-		}
 		if option.Config.BPFSocketLBHostnsOnly {
 			cDefinesMap["ENABLE_SOCKET_LB_HOST_ONLY"] = "1"
+		} else {
+			cDefinesMap["ENABLE_SOCKET_LB_FULL"] = "1"
+		}
+		if option.Config.EnableSocketLBPeer {
+			cDefinesMap["ENABLE_SOCKET_LB_PEER"] = "1"
 		}
 		if option.Config.EnableSocketLBTracing {
 			cDefinesMap["TRACE_SOCK_NOTIFY"] = "1"
@@ -336,6 +325,9 @@ func (h *HeaderfileWriter) WriteNodeConfig(w io.Writer, cfg *datapath.LocalNodeC
 				cDefinesMap["LB6_HEALTH_MAP"] = lbmap.HealthProbe6MapName
 			}
 		}
+		if option.Config.EnableStatelessNat46X64 {
+			cDefinesMap["ENABLE_NAT_46X64_STATELESS"] = "1"
+		}
 		if option.Config.NodePortNat46X64 {
 			cDefinesMap["ENABLE_NAT_46X64"] = "1"
 		}
@@ -356,7 +348,7 @@ func (h *HeaderfileWriter) WriteNodeConfig(w io.Writer, cfg *datapath.LocalNodeC
 		if option.Config.NodePortMode == option.NodePortModeDSR ||
 			option.Config.NodePortMode == option.NodePortModeHybrid {
 			cDefinesMap["ENABLE_DSR"] = "1"
-			if option.Config.LoadBalancerPMTUDiscovery {
+			if option.Config.EnablePMTUDiscovery {
 				cDefinesMap["ENABLE_DSR_ICMP_ERRORS"] = "1"
 			}
 			if option.Config.NodePortMode == option.NodePortModeHybrid {
@@ -593,10 +585,6 @@ func (h *HeaderfileWriter) WriteNodeConfig(w io.Writer, cfg *datapath.LocalNodeC
 
 	if option.Config.EnableICMPRules {
 		cDefinesMap["ENABLE_ICMP_RULE"] = "1"
-	}
-
-	if option.Config.EnableL7Proxy {
-		cDefinesMap["ENABLE_L7_PROXY"] = "1"
 	}
 
 	cDefinesMap["CIDR_IDENTITY_RANGE_START"] = fmt.Sprintf("%d", identity.MinLocalIdentity)

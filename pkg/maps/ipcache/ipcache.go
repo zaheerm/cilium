@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"sync"
 	"unsafe"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/cilium/cilium/pkg/bpf"
 	"github.com/cilium/cilium/pkg/logging"
 	"github.com/cilium/cilium/pkg/logging/logfields"
+	"github.com/cilium/cilium/pkg/option"
 	"github.com/cilium/cilium/pkg/types"
 )
 
@@ -94,6 +96,18 @@ func (k Key) IPNet() *net.IPNet {
 		cidr.Mask = net.CIDRMask(int(prefixLen), 128)
 	}
 	return cidr
+}
+
+func (k Key) Prefix() netip.Prefix {
+	var addr netip.Addr
+	prefixLen := int(k.Prefixlen - getStaticPrefixBits())
+	switch k.Family {
+	case bpf.EndpointKeyIPv4:
+		addr = netip.AddrFrom4(*(*[4]byte)(k.IP[:4]))
+	case bpf.EndpointKeyIPv6:
+		addr = netip.AddrFrom16(k.IP)
+	}
+	return netip.PrefixFrom(addr, prefixLen)
 }
 
 // getPrefixLen determines the length that should be set inside the Key so that
@@ -177,7 +191,8 @@ func newIPCacheMap(name string) *bpf.Map {
 // NewMap instantiates a Map.
 func NewMap(name string) *Map {
 	return &Map{
-		Map:           *newIPCacheMap(name).WithCache().WithPressureMetric(),
+		Map: *newIPCacheMap(name).WithCache().WithPressureMetric().
+			WithEvents(option.Config.GetEventBufferConfig(name)),
 		deleteSupport: true,
 	}
 }
@@ -262,24 +277,34 @@ func (m *Map) supportsDelete() bool {
 // SupportsDelete determines whether the underlying kernel map type supports
 // the delete operation.
 func SupportsDelete() bool {
-	return IPCache.supportsDelete()
+	return IPCacheMap().supportsDelete()
 }
 
 // BackedByLPM returns true if the IPCache is backed by a proper LPM
 // implementation (provided by Linux kernels 4.11 or later), false otherwise.
 func BackedByLPM() bool {
-	return IPCache.MapType == bpf.MapTypeLPMTrie
+	return IPCacheMap().MapType == bpf.MapTypeLPMTrie
 }
 
 var (
 	// IPCache is a mapping of all endpoint IPs in the cluster which this
 	// Cilium agent is a part of to their corresponding security identities.
 	// It is a singleton; there is only one such map per agent.
-	IPCache = NewMap(Name)
+	ipcache *Map
+	once    = &sync.Once{}
 )
+
+// IPCacheMap gets the ipcache Map singleton. If it has not already been done,
+// this also initializes the Map.
+func IPCacheMap() *Map {
+	once.Do(func() {
+		ipcache = NewMap(Name)
+	})
+	return ipcache
+}
 
 // Reopen attempts to close and re-open the IPCache map at the standard path
 // on the filesystem.
 func Reopen() error {
-	return IPCache.Map.Reopen()
+	return IPCacheMap().Reopen()
 }

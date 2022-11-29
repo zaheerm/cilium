@@ -118,6 +118,10 @@ data:
   cilium-endpoint-gc-interval: {{ include "validateDuration" .Values.operator.endpointGCInterval | quote }}
   nodes-gc-interval: {{ include "validateDuration" .Values.operator.nodeGCInterval | quote }}
 
+{{- if hasKey .Values.operator "skipCNPStatusStartupClean" }}
+  skip-cnp-status-startup-clean: "{{ .Values.operator.skipCNPStatusStartupClean }}"
+{{- end }}
+
 {{- if hasKey .Values "disableEndpointCRD" }}
   # Disable the usage of CiliumEndpoint CRD
   disable-endpoint-crd: "{{ .Values.disableEndpointCRD }}"
@@ -158,7 +162,7 @@ data:
 {{- if hasKey .Values "policyEnforcementMode" }}
   # The agent can be put into the following three policy enforcement modes
   # default, always and never.
-  # https://docs.cilium.io/en/latest/policy/intro/#policy-enforcement-modes
+  # https://docs.cilium.io/en/latest/security/policy/intro/#policy-enforcement-modes
   enable-policy: "{{ lower .Values.policyEnforcementMode }}"
 {{- end }}
 
@@ -209,6 +213,13 @@ data:
   ingress-shared-lb-service-name: {{ .Values.ingressController.service.name }}
 {{- end }}
 
+{{- if .Values.gatewayAPI.enabled }}
+  enable-gateway-api: "true"
+  enable-envoy-config: "true"
+  enable-gateway-api-secrets-sync: {{ .Values.gatewayAPI.secretsNamespace.sync | quote }}
+  gateway-api-secrets-namespace: {{ .Values.gatewayAPI.secretsNamespace.name | quote }}
+{{- end }}
+
   # Enable IPv4 addressing. If enabled, all endpoints are allocated an IPv4
   # address.
   enable-ipv4: {{ .Values.ipv4.enabled | quote }}
@@ -249,7 +260,7 @@ data:
   enable-bpf-clock-probe: {{ $defaultBpfClockProbe | quote }}
 {{- end }}
 
-{{- if hasKey .Values.bpf "tproxy" }}
+{{- if (not (kindIs "invalid" .Values.bpf.tproxy)) }}
   enable-bpf-tproxy: {{ .Values.bpf.tproxy | quote }}
 {{- else if eq $defaultBpfTProxy "true" }}
   enable-bpf-tproxy: {{ $defaultBpfTProxy | quote }}
@@ -274,21 +285,22 @@ data:
 
 
 
-{{- if hasKey .Values.bpf "mapDynamicSizeRatio" }}
-  # Specifies the ratio (0.0-1.0) of total system memory to use for dynamic
+{{- if .Values.bpf.mapDynamicSizeRatio }}
+  # Specifies the ratio (0.0-1.0] of total system memory to use for dynamic
   # sizing of the TCP CT, non-TCP CT, NAT and policy BPF maps.
   bpf-map-dynamic-size-ratio: {{ .Values.bpf.mapDynamicSizeRatio | quote }}
 {{- else if ne $defaultBpfMapDynamicSizeRatio 0.0 }}
-  # Specifies the ratio (0.0-1.0) of total system memory to use for dynamic
+  # Specifies the ratio (0.0-1.0] of total system memory to use for dynamic
   # sizing of the TCP CT, non-TCP CT, NAT and policy BPF maps.
   bpf-map-dynamic-size-ratio: {{ $defaultBpfMapDynamicSizeRatio | quote }}
 {{- end }}
 
-{{- if hasKey .Values.bpf "hostLegacyRouting" }}
+{{- if (not (kindIs "invalid" .Values.bpf.hostLegacyRouting)) }}
   enable-host-legacy-routing: {{ .Values.bpf.hostLegacyRouting | quote }}
-{{- else if hasKey .Values.bpf "hostRouting" }}
-  # DEPRECATED: this block should be removed in 1.13
-  enable-host-legacy-routing: {{ .Values.bpf.hostRouting | quote }}
+{{- else if ne .Values.cni.chainingMode "none" }}
+  # In cni chaining mode, the other chained plugin is responsible for underlying connectivity,
+  # so cilium eBPF host routing shoud not work, and let it fall back to the legacy routing mode
+  enable-host-legacy-routing: "true"
 {{- end }}
 
 {{- if or $bpfCtTcpMax $bpfCtAnyMax }}
@@ -330,11 +342,6 @@ data:
   # bpf-lb-map-max specifies the maximum number of entries in bpf lb service,
   # backend and affinity maps.
   bpf-lb-map-max: "{{ .Values.bpf.lbMapMax }}"
-{{- end }}
-  # bpf-lb-bypass-fib-lookup instructs Cilium to enable the FIB lookup bypass
-  # optimization for nodeport reverse NAT handling.
-{{- if hasKey .Values.bpf "lbBypassFIBLookup" }}
-  bpf-lb-bypass-fib-lookup: {{ .Values.bpf.lbBypassFIBLookup | quote }}
 {{- end }}
 {{- if hasKey .Values.bpf "lbExternalClusterIP" }}
   bpf-lb-external-clusterip: {{ .Values.bpf.lbExternalClusterIP | quote }}
@@ -472,7 +479,7 @@ data:
   enable-ipv6-big-tcp: {{ .Values.enableIPv6BIGTCP | quote }}
   enable-ipv6-masquerade: {{ .Values.enableIPv6Masquerade | quote }}
 
-{{- if hasKey .Values.bpf "masquerade" }}
+{{- if (not (kindIs "invalid" .Values.bpf.masquerade)) }}
   enable-bpf-masquerade: {{ .Values.bpf.masquerade | quote }}
 {{- else if eq $defaultBpfMasquerade "true" }}
   enable-bpf-masquerade: {{ $defaultBpfMasquerade | quote }}
@@ -528,15 +535,10 @@ data:
 
   auto-direct-node-routes: {{ .Values.autoDirectNodeRoutes | quote }}
 
-{{- if .Values.bandwidthManager }}
-{{- if typeIs "bool" .Values.bandwidthManager }}
-  # DEPRECATED: this block should be removed in 1.13
-  enable-bandwidth-manager: {{ .Values.bandwidthManager | quote }}
-{{- else }}
+{{- if hasKey .Values "bandwidthManager" }}
 {{- if .Values.bandwidthManager.enabled }}
   enable-bandwidth-manager: {{ .Values.bandwidthManager.enabled | quote }}
   enable-bbr: {{ .Values.bandwidthManager.bbr | quote }}
-{{- end }}
 {{- end }}
 {{- end }}
 
@@ -556,6 +558,10 @@ data:
   enable-ipv4-fragment-tracking: {{ .Values.fragmentTracking | quote }}
 {{- else if (ne $fragmentTracking "true") }}
   enable-ipv4-fragment-tracking: "false"
+{{- end }}
+
+{{- if .Values.statelessNat46x64.enabled }}
+  enable-stateless-nat46x64: {{ .Values.statelessNat46x64.enabled | quote }}
 {{- end }}
 
 {{- if and .Values.hostFirewall .Values.hostFirewall.enabled }}
@@ -587,11 +593,6 @@ data:
 {{- end }}
 {{- end }}
 
-{{- if hasKey .Values "hostServices" }}
-{{- if ne .Values.hostServices.protocols "tcp,udp" }}
-  host-reachable-services-protos: {{ .Values.hostServices.protocols }}
-{{- end }}
-{{- end }}
 {{- if hasKey .Values "hostPort" }}
 {{- if eq $kubeProxyReplacement "partial" }}
   enable-host-port: {{ .Values.hostPort.enabled | quote }}
@@ -730,10 +731,6 @@ data:
   # the buffer size is set to the default monitor queue size.
   hubble-event-queue-size: {{ .Values.hubble.eventQueueSize | quote }}
 {{- end }}
-{{- if hasKey .Values.hubble "flowBufferSize" }}
-  # DEPRECATED: this block should be removed in 1.11
-  hubble-flow-buffer-size: {{ .Values.hubble.flowBufferSize | quote }}
-{{- end }}
 {{- if hasKey .Values.hubble "eventBufferCapacity" }}
   # Capacity of the buffer to store recent events.
   hubble-event-buffer-capacity: {{ .Values.hubble.eventBufferCapacity | quote }}
@@ -748,6 +745,7 @@ data:
   hubble-metrics: {{- range .Values.hubble.metrics.enabled }}
     {{.}}
 {{- end }}
+  enable-hubble-open-metrics: {{ .Values.hubble.metrics.enableOpenMetrics | quote }}
 {{- end }}
 {{- if hasKey .Values.hubble "listenAddress" }}
   # An additional address for Hubble server to listen to (e.g. ":4244").
@@ -760,6 +758,12 @@ data:
 {{- else }}
   hubble-disable-tls: "true"
 {{- end }}
+{{- end }}
+{{- if .Values.hubble.preferIpv6 }}
+  hubble-prefer-ipv6: "true"
+{{- end }}
+{{- if (not (kindIs "invalid" .Values.hubble.skipUnknownCGroupIDs)) }}
+  hubble-skip-unknown-cgroup-ids: {{ .Values.hubble.skipUnknownCGroupIDs | quote }}
 {{- end }}
 {{- end }}
 {{- if hasKey .Values "disableIptablesFeederRules" }}
@@ -869,6 +873,10 @@ data:
   enable-bgp-control-plane: "false"
 {{- end }}
 
+{{- if .Values.pmtuDiscovery.enabled }}
+  enable-pmtu-discovery: "true"
+{{- end }}
+
 {{- if not .Values.securityContext.privileged }}
   procfs: "/host/proc"
 {{- end }}
@@ -881,7 +889,7 @@ data:
   cgroup-root: {{ .Values.cgroup.hostRoot | quote }}
 {{- end }}
 
-{{- if hasKey .Values.bpf "vlanBypass" }}
+{{- if .Values.bpf.vlanBypass }}
   # A space separated list of explicitly allowed vlan id's
   vlan-bpf-bypass: {{ .Values.bpf.vlanBypass | join " " | quote }}
 {{- end }}

@@ -188,7 +188,6 @@ handle_ipv6(struct __ctx_buff *ctx, __u32 secctx, const bool from_host)
 	union v6addr *dst;
 	__u32 __maybe_unused remote_id = WORLD_ID;
 	int ret, l3_off = ETH_HLEN, hdrlen;
-	bool skip_redirect = false;
 	struct endpoint_info *ep;
 	__u8 nexthdr;
 
@@ -211,7 +210,7 @@ handle_ipv6(struct __ctx_buff *ctx, __u32 secctx, const bool from_host)
 #ifdef ENABLE_NODEPORT
 	if (!from_host) {
 		if (!(ctx_get_xfer(ctx, XFER_FLAGS) & XFER_PKT_NO_SVC) &&
-		    !bpf_skip_nodeport(ctx)) {
+		    !ctx_skip_nodeport(ctx)) {
 			ret = nodeport_lb6(ctx, secctx);
 			/* nodeport_lb6() returns with TC_ACT_REDIRECT for
 			 * traffic to L7 LB. Policy enforcement needs to take
@@ -228,12 +227,6 @@ handle_ipv6(struct __ctx_buff *ctx, __u32 secctx, const bool from_host)
 	}
 #endif /* ENABLE_NODEPORT */
 
-#if defined(NO_REDIRECT) && !defined(ENABLE_HOST_ROUTING)
-	/* See IPv4 case for NO_REDIRECT/ENABLE_HOST_ROUTING comments */
-	if (!from_host)
-		skip_redirect = true;
-#endif /* NO_REDIRECT && !ENABLE_HOST_ROUTING */
-
 #ifdef ENABLE_HOST_FIREWALL
 	if (from_host) {
 		ret = ipv6_host_policy_egress(ctx, secctx, &trace);
@@ -246,8 +239,11 @@ handle_ipv6(struct __ctx_buff *ctx, __u32 secctx, const bool from_host)
 	}
 #endif /* ENABLE_HOST_FIREWALL */
 
-	if (skip_redirect)
+#if defined(NO_REDIRECT) && !defined(ENABLE_HOST_ROUTING)
+	/* See IPv4 case for NO_REDIRECT/ENABLE_HOST_ROUTING comments */
+	if (!from_host)
 		return CTX_ACT_OK;
+#endif /* NO_REDIRECT && !ENABLE_HOST_ROUTING */
 
 skip_host_firewall:
 #ifdef ENABLE_SRV6
@@ -466,8 +462,6 @@ handle_ipv4(struct __ctx_buff *ctx, __u32 secctx,
 	};
 	struct remote_endpoint_info *info = NULL;
 	__u32 __maybe_unused remote_id = 0;
-	struct ipv4_ct_tuple tuple = {};
-	bool skip_redirect = false;
 	struct endpoint_info *ep;
 	void *data, *data_end;
 	struct iphdr *ip4;
@@ -488,7 +482,7 @@ handle_ipv4(struct __ctx_buff *ctx, __u32 secctx,
 #ifdef ENABLE_NODEPORT
 	if (!from_host) {
 		if (!(ctx_get_xfer(ctx, XFER_FLAGS) & XFER_PKT_NO_SVC) &&
-		    !bpf_skip_nodeport(ctx)) {
+		    !ctx_skip_nodeport(ctx)) {
 			ret = nodeport_lb4(ctx, secctx);
 			if (ret == NAT_46X64_RECIRC) {
 				ctx_store_meta(ctx, CB_SRC_IDENTITY, secctx);
@@ -514,20 +508,6 @@ handle_ipv4(struct __ctx_buff *ctx, __u32 secctx,
 	}
 #endif /* ENABLE_NODEPORT */
 
-#if defined(NO_REDIRECT) && !defined(ENABLE_HOST_ROUTING)
-	/* Without bpf_redirect_neigh() helper, we cannot redirect a
-	 * packet to a local endpoint in the direct routing mode, as
-	 * the redirect bypasses nf_conntrack table. This makes a
-	 * second reply from the endpoint to be MASQUERADEd or to be
-	 * DROP-ed by k8s's "--ctstate INVALID -j DROP" depending via
-	 * which interface it was inputed. With bpf_redirect_neigh()
-	 * we bypass request and reply path in the host namespace and
-	 * do not run into this issue.
-	 */
-	if (!from_host)
-		skip_redirect = true;
-#endif /* NO_REDIRECT && !ENABLE_HOST_ROUTING */
-
 #ifdef ENABLE_HOST_FIREWALL
 	if (from_host) {
 		/* We're on the egress path of cilium_host. */
@@ -543,10 +523,19 @@ handle_ipv4(struct __ctx_buff *ctx, __u32 secctx,
 	}
 #endif /* ENABLE_HOST_FIREWALL */
 
-	if (skip_redirect)
+#if defined(NO_REDIRECT) && !defined(ENABLE_HOST_ROUTING)
+	/* Without bpf_redirect_neigh() helper, we cannot redirect a
+	 * packet to a local endpoint in the direct routing mode, as
+	 * the redirect bypasses nf_conntrack table. This makes a
+	 * second reply from the endpoint to be MASQUERADEd or to be
+	 * DROP-ed by k8s's "--ctstate INVALID -j DROP" depending via
+	 * which interface it was inputed. With bpf_redirect_neigh()
+	 * we bypass request and reply path in the host namespace and
+	 * do not run into this issue.
+	 */
+	if (!from_host)
 		return CTX_ACT_OK;
-
-	tuple.nexthdr = ip4->protocol;
+#endif /* NO_REDIRECT && !ENABLE_HOST_ROUTING */
 
 	if (from_host) {
 		/* If we are attached to cilium_host at egress, this will
@@ -771,100 +760,15 @@ drop_err:
 	return ret;
 }
 
-static __always_inline int
-do_netdev_encrypt_fib(struct __ctx_buff *ctx __maybe_unused,
-		      __u16 proto __maybe_unused,
-		      int *encrypt_iface __maybe_unused,
-		      int *ext_err __maybe_unused)
-{
-	int ret = 0;
-	/* Only do FIB lookup if both the BPF helper is supported and we know
-	 * the egress ineterface. If we don't have an egress interface,
-	 * typically in an environment with many egress devs than we have
-	 * to let the stack decide how to egress the packet. EKS is the
-	 * example of an environment with multiple egress interfaces.
-	 */
-#if defined(BPF_HAVE_FIB_LOOKUP) && defined(ENCRYPT_IFACE)
-	struct bpf_fib_lookup fib_params = {};
-	void *data, *data_end;
-	int err;
-
-	if (proto ==  bpf_htons(ETH_P_IP)) {
-		struct iphdr *ip4;
-
-		if (!revalidate_data(ctx, &data, &data_end, &ip4)) {
-			ret = DROP_INVALID;
-			goto drop_err_fib;
-		}
-
-		fib_params.family = AF_INET;
-		fib_params.ipv4_src = ip4->saddr;
-		fib_params.ipv4_dst = ip4->daddr;
-	} else {
-		struct ipv6hdr *ip6;
-
-		if (!revalidate_data(ctx, &data, &data_end, &ip6)) {
-			ret = DROP_INVALID;
-			goto drop_err_fib;
-		}
-
-		fib_params.family = AF_INET6;
-		ipv6_addr_copy((union v6addr *) &fib_params.ipv6_src, (union v6addr *) &ip6->saddr);
-		ipv6_addr_copy((union v6addr *) &fib_params.ipv6_dst, (union v6addr *) &ip6->daddr);
-	}
-
-	fib_params.ifindex = *encrypt_iface;
-
-	err = fib_lookup(ctx, &fib_params, sizeof(fib_params),
-		    BPF_FIB_LOOKUP_DIRECT | BPF_FIB_LOOKUP_OUTPUT);
-	if (err != 0) {
-		*ext_err = err;
-		ret = DROP_NO_FIB;
-		goto drop_err_fib;
-	}
-	if (eth_store_daddr(ctx, fib_params.dmac, 0) < 0) {
-		ret = DROP_WRITE_ERROR;
-		goto drop_err_fib;
-	}
-	if (eth_store_saddr(ctx, fib_params.smac, 0) < 0) {
-		ret = DROP_WRITE_ERROR;
-		goto drop_err_fib;
-	}
-	*encrypt_iface = fib_params.ifindex;
-drop_err_fib:
-#endif /* BPF_HAVE_FIB_LOOKUP */
-	return ret;
-}
-
-static __always_inline int do_netdev_encrypt(struct __ctx_buff *ctx, __u16 proto,
+static __always_inline int do_netdev_encrypt(struct __ctx_buff *ctx,
 					     __u32 src_id)
 {
-	int encrypt_iface = 0;
-	int ext_err = 0;
-	int ret = 0;
-#if defined(ENCRYPT_IFACE) && defined(BPF_HAVE_FIB_LOOKUP)
-	encrypt_iface = ENCRYPT_IFACE;
-#endif
+	int ret;
+
 	ret = do_netdev_encrypt_pools(ctx);
 	if (ret)
 		return send_drop_notify_error(ctx, src_id, ret, CTX_ACT_DROP, METRIC_INGRESS);
 
-	ret = do_netdev_encrypt_fib(ctx, proto, &encrypt_iface, &ext_err);
-	if (ret)
-		return send_drop_notify_error_ext(ctx, src_id, ret, ext_err,
-						  CTX_ACT_DROP, METRIC_INGRESS);
-
-	bpf_clear_meta(ctx);
-#ifdef BPF_HAVE_FIB_LOOKUP
-	/* Redirect only works if we have a fib lookup to set the MAC
-	 * addresses. Otherwise let the stack do the routing and fib
-	 * Note, without FIB lookup implemented the packet may have
-	 * incorrect dmac leaving bpf_host so will need to mark as
-	 * PACKET_HOST or otherwise fixup MAC addresses.
-	 */
-	if (encrypt_iface)
-		return ctx_redirect(ctx, encrypt_iface, 0);
-#endif
 	return CTX_ACT_OK;
 }
 
@@ -885,7 +789,7 @@ static __always_inline int do_netdev_encrypt_encap(struct __ctx_buff *ctx, __u32
 						0, NOT_VTEP_DST, &trace);
 }
 
-static __always_inline int do_netdev_encrypt(struct __ctx_buff *ctx, __u16 proto __maybe_unused,
+static __always_inline int do_netdev_encrypt(struct __ctx_buff *ctx,
 					     __u32 src_id)
 {
 	return do_netdev_encrypt_encap(ctx, src_id);
@@ -932,7 +836,7 @@ do_netdev(struct __ctx_buff *ctx, __u16 proto, const bool from_host)
 			send_trace_notify(ctx, TRACE_FROM_STACK, identity, 0, 0,
 					  ctx->ingress_ifindex, TRACE_REASON_ENCRYPTED,
 					  TRACE_PAYLOAD_LEN);
-			return do_netdev_encrypt(ctx, proto, identity);
+			return do_netdev_encrypt(ctx, identity);
 		}
 #endif
 
@@ -940,7 +844,7 @@ do_netdev(struct __ctx_buff *ctx, __u16 proto, const bool from_host)
 				  ctx->ingress_ifindex,
 				  TRACE_REASON_UNKNOWN, TRACE_PAYLOAD_LEN);
 	} else {
-		bpf_skip_nodeport_clear(ctx);
+		ctx_skip_nodeport_clear(ctx);
 		send_trace_notify(ctx, TRACE_FROM_NETWORK, 0, 0, 0,
 				  ctx->ingress_ifindex,
 				  TRACE_REASON_UNKNOWN, TRACE_PAYLOAD_LEN);

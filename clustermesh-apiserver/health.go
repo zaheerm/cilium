@@ -4,7 +4,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 
@@ -27,6 +26,8 @@ func (HealthAPIServerConfig) Flags(flags *pflag.FlagSet) {
 
 var healthAPIServerCell = cell.Module(
 	"health-api-server",
+	"ClusterMesh Health API Server",
+
 	cell.Config(HealthAPIServerConfig{}),
 	cell.Invoke(registerHealthAPIServer),
 )
@@ -54,7 +55,7 @@ func registerHealthAPIServer(lc hive.Lifecycle, clientset k8sClient.Clientset, c
 	}
 
 	lc.Append(hive.Hook{
-		OnStart: func(context.Context) error {
+		OnStart: func(hive.HookContext) error {
 			go func() {
 				log.Info("Started health API")
 				if err := srv.ListenAndServe(); err != nil {
@@ -63,6 +64,6 @@ func registerHealthAPIServer(lc hive.Lifecycle, clientset k8sClient.Clientset, c
 			}()
 			return nil
 		},
-		OnStop: srv.Shutdown,
+		OnStop: func(ctx hive.HookContext) error { return srv.Shutdown(ctx) },
 	})
 }

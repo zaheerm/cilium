@@ -41,8 +41,6 @@ var _ = SkipDescribeIf(func() bool {
 		l3Policy             string
 		l7PolicyTLS          string
 		TLSCaCerts           string
-		TLSArtiiCrt          string
-		TLSArtiiKey          string
 		TLSLyftCrt           string
 		TLSLyftKey           string
 		TLSCa                string
@@ -60,8 +58,6 @@ var _ = SkipDescribeIf(func() bool {
 		l3Policy = helpers.ManifestGet(kubectl.BasePath(), "l3-l4-policy.yaml")
 		l7PolicyTLS = helpers.ManifestGet(kubectl.BasePath(), "l7-policy-TLS.yaml")
 		TLSCaCerts = helpers.ManifestGet(kubectl.BasePath(), "testCA.crt")
-		TLSArtiiCrt = helpers.ManifestGet(kubectl.BasePath(), "internal-artii.crt")
-		TLSArtiiKey = helpers.ManifestGet(kubectl.BasePath(), "internal-artii.key")
 		TLSLyftCrt = helpers.ManifestGet(kubectl.BasePath(), "internal-lyft.crt")
 		TLSLyftKey = helpers.ManifestGet(kubectl.BasePath(), "internal-lyft.key")
 		TLSCa = helpers.ManifestGet(kubectl.BasePath(), "ca.crt")
@@ -140,7 +136,7 @@ var _ = SkipDescribeIf(func() bool {
 			_ = kubectl.Exec(cmd)
 		})
 
-		SkipItIf(helpers.SkipQuarantined, "TLS policy", func() {
+		It("TLS policy", func() {
 			By("Testing L7 Policy with TLS")
 
 			res := kubectl.CreateSecret("generic", "user-agent", "default", "--from-literal=user-agent=CURRL")
@@ -148,9 +144,6 @@ var _ = SkipDescribeIf(func() bool {
 
 			res = kubectl.CreateSecret("generic", "test-client", "default", "--from-file="+TLSCa)
 			res.ExpectSuccess("Cannot create secret %s", "test-client")
-
-			res = kubectl.CreateSecret("tls", "artii-server", "default", "--cert="+TLSArtiiCrt+" --key="+TLSArtiiKey)
-			res.ExpectSuccess("Cannot create secret %s", "artii-server")
 
 			res = kubectl.CreateSecret("tls", "lyft-server", "default", "--cert="+TLSLyftCrt+" --key="+TLSLyftKey)
 			res.ExpectSuccess("Cannot create secret %s", "lyft-server")
@@ -161,18 +154,6 @@ var _ = SkipDescribeIf(func() bool {
 			_, err := kubectl.CiliumPolicyAction(
 				namespaceForTest, l7PolicyTLS, helpers.KubectlApply, helpers.HelperTimeout)
 			Expect(err).Should(BeNil(), "Cannot install %q policy", l7PolicyTLS)
-
-			res = kubectl.ExecPodCmd(
-				namespaceForTest, appPods[helpers.App2],
-				helpers.CurlWithRetries("-4 --max-time 15 %s 'https://artii.herokuapp.com/make?text=cilium&font=univers'", 5, true, "-v --cacert /cacert.pem"))
-			res.ExpectSuccess("Cannot connect from %q to 'https://artii.herokuapp.com/make?text=cilium&font=univers'",
-				appPods[helpers.App2])
-
-			res = kubectl.ExecPodCmd(
-				namespaceForTest, appPods[helpers.App2],
-				helpers.CurlWithRetries("-4 %s 'https://artii.herokuapp.com:443/fonts_list'", 5, true, "-v --cacert /cacert.pem"))
-			res.ExpectFailWithError("403 Forbidden", "Unexpected connection from %q to 'https://artii.herokuapp.com:443/fonts_list'",
-				appPods[helpers.App2])
 
 			res = kubectl.ExecPodCmd(
 				namespaceForTest, appPods[helpers.App2],
@@ -498,7 +479,7 @@ var _ = SkipDescribeIf(func() bool {
 				// K8s Services, for the sake of simplicity. Making the backend
 				// pod IP directly routable on the "outside" node is sufficient
 				// to validate the policy under test.
-				res := kubectl.AddIPRoute(outsideNodeName, backendPodIP, hostIPOfBackendPod, true)
+				res := kubectl.AddIPRoute(outsideNodeName, backendPodIP, hostIPOfBackendPod, false)
 				Expect(res).To(getMatcher(true))
 
 				policyVerdictAllowRegex = regexp.MustCompile(
@@ -794,9 +775,12 @@ var _ = SkipDescribeIf(func() bool {
 						defer GinkgoRecover()
 						defer wg.Done()
 						By("Checking ingress connectivity from world to k8s1 pod")
-						By("Adding a static route to %s on the %s node (outside)", k8s1PodIP, outsideNodeName)
-						res := kubectl.AddIPRoute(outsideNodeName, k8s1PodIP, k8s1IP, true)
+						By("Adding a static route to %s via %s on the %s node (outside)", k8s1PodIP, k8s1IP, outsideNodeName)
+						res := kubectl.AddIPRoute(outsideNodeName, k8s1PodIP, k8s1IP, false)
 						Expect(res).To(getMatcher(true))
+						defer func() {
+							kubectl.DelIPRoute(outsideNodeName, k8s1PodIP, k8s1IP).ExpectSuccess("Failed to del ip route")
+						}()
 
 						if expectWorldSuccess {
 							testCurlFromOutside(kubectl, &helpers.NodesInfo{
@@ -1640,9 +1624,12 @@ var _ = SkipDescribeIf(helpers.DoesNotRunOn419OrLaterKernel,
 						defer GinkgoRecover()
 						defer wg.Done()
 						By("Checking ingress connectivity from world to k8s1 pod")
-						By("Adding a static route to %s on the %s node (outside)", k8s1PodIP, outsideNodeName)
-						res := kubectl.AddIPRoute(outsideNodeName, k8s1PodIP, k8s1IP, true)
+						By("Adding a static route to %s via %s on the %s node (outside)", k8s1PodIP, k8s1IP, outsideNodeName)
+						res := kubectl.AddIPRoute(outsideNodeName, k8s1PodIP, k8s1IP, false)
 						Expect(res).To(getMatcher(true))
+						defer func() {
+							kubectl.DelIPRoute(outsideNodeName, k8s1PodIP, k8s1IP).ExpectSuccess("Failed to del ip route")
+						}()
 
 						if expectWorldSuccess {
 							testCurlFromOutside(kubectl, &helpers.NodesInfo{

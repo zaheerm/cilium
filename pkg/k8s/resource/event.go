@@ -10,15 +10,18 @@ import (
 
 // Event emitted from resource. One of SyncEvent, UpdateEvent or DeleteEvent.
 type Event[T k8sRuntime.Object] interface {
-	// Handle the event by invoking the right handler.
-	// On error the event is requeued by key for later processing.
+	// Handle the event by invoking the right handler. The handlers can be
+	// nil in which case the event is just marked as processed successfully.
+	//
+	// On error from the event handlers the event is requeued by key for later retrying.
+	// The retry behaviour can be configured with the WithErrorHandler option.
 	//
 	// If you use Handle(), then Done() should not be called.
 	// If you need to process the events in parallel/asynchronously,
 	// then do a type-switch on Event[T] and call Done() after the
 	// event has been processed.
 	Handle(
-		onSync func(Store[T]) error,
+		onSync func() error,
 		onUpdate func(Key, T) error,
 		onDelete func(Key, T) error,
 	)
@@ -45,13 +48,16 @@ func (b *baseEvent) Done(err error) {
 // perform e.g. garbage collection operations.
 type SyncEvent[T k8sRuntime.Object] struct {
 	baseEvent
-	Store Store[T]
 }
 
 var _ Event[*corev1.Node] = &SyncEvent[*corev1.Node]{}
 
-func (ev *SyncEvent[T]) Handle(onSync func(store Store[T]) error, onUpdate func(Key, T) error, onDelete func(Key, T) error) {
-	ev.Done(onSync(ev.Store))
+func (ev *SyncEvent[T]) Handle(onSync func() error, onUpdate func(Key, T) error, onDelete func(Key, T) error) {
+	if onSync != nil {
+		ev.Done(onSync())
+	} else {
+		ev.Done(nil)
+	}
 }
 
 // UpdateEvent is emitted when an object has been added or updated
@@ -63,8 +69,13 @@ type UpdateEvent[T k8sRuntime.Object] struct {
 
 var _ Event[*corev1.Node] = &UpdateEvent[*corev1.Node]{}
 
-func (ev *UpdateEvent[T]) Handle(onSync func(Store[T]) error, onUpdate func(Key, T) error, onDelete func(Key, T) error) {
-	ev.Done(onUpdate(ev.Key, ev.Object))
+func (ev *UpdateEvent[T]) Handle(onSync func() error, onUpdate func(Key, T) error, onDelete func(Key, T) error) {
+	if onUpdate != nil {
+		ev.Done(onUpdate(ev.Key, ev.Object))
+	} else {
+		ev.Done(nil)
+	}
+
 }
 
 // DeleteEvent is emitted when an object has been deleted
@@ -76,6 +87,10 @@ type DeleteEvent[T k8sRuntime.Object] struct {
 
 var _ Event[*corev1.Node] = &DeleteEvent[*corev1.Node]{}
 
-func (ev *DeleteEvent[T]) Handle(onSync func(Store[T]) error, onUpdate func(Key, T) error, onDelete func(Key, T) error) {
-	ev.Done(onDelete(ev.Key, ev.Object))
+func (ev *DeleteEvent[T]) Handle(onSync func() error, onUpdate func(Key, T) error, onDelete func(Key, T) error) {
+	if onDelete != nil {
+		ev.Done(onDelete(ev.Key, ev.Object))
+	} else {
+		ev.Done(nil)
+	}
 }

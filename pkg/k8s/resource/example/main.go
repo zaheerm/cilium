@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of Cilium
+
 package main
 
 import (
@@ -10,7 +13,6 @@ import (
 
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/tools/cache"
 
 	"github.com/cilium/cilium/pkg/hive"
 	"github.com/cilium/cilium/pkg/hive/cell"
@@ -53,22 +55,30 @@ func main() {
 
 var resourcesCell = cell.Module(
 	"resources",
+	"Kubernetes Pod and Service resources",
+
 	cell.Provide(
-		resource.NewResourceConstructor[*corev1.Pod](
-			func(c client.Clientset) cache.ListerWatcher {
-				return utils.ListerWatcherFromTyped[*corev1.PodList](c.CoreV1().Pods(""))
-			},
-		),
-		resource.NewResourceConstructor[*corev1.Service](
-			func(c client.Clientset) cache.ListerWatcher {
-				return utils.ListerWatcherFromTyped[*corev1.ServiceList](c.CoreV1().Services(""))
-			},
-		),
+		func(lc hive.Lifecycle, c client.Clientset) resource.Resource[*corev1.Pod] {
+			if !c.IsEnabled() {
+				return nil
+			}
+			lw := utils.ListerWatcherFromTyped[*corev1.PodList](c.CoreV1().Pods(""))
+			return resource.New[*corev1.Pod](lc, lw)
+		},
+		func(lc hive.Lifecycle, c client.Clientset) resource.Resource[*corev1.Service] {
+			if !c.IsEnabled() {
+				return nil
+			}
+			lw := utils.ListerWatcherFromTyped[*corev1.ServiceList](c.CoreV1().Services(""))
+			return resource.New[*corev1.Service](lc, lw)
+		},
 	),
 )
 
 var printServicesCell = cell.Module(
 	"print-services",
+	"Prints Kubernetes Services",
+
 	cell.Provide(newPrintServices),
 )
 
@@ -100,31 +110,35 @@ func newPrintServices(p printServicesParams) (*PrintServices, error) {
 		pods:     p.Pods,
 		services: p.Services,
 	}
-	p.Lifecycle.Append(hive.Hook{OnStart: ps.start, OnStop: ps.stop})
+	p.Lifecycle.Append(ps)
 	return ps, nil
 }
 
-func (ps *PrintServices) start(context.Context) error {
+func (ps *PrintServices) Start(startCtx hive.HookContext) error {
 	ps.wg.Add(1)
 
-	ps.printServices()
+	// Using the start context, do a blocking dump of all
+	// services. Using the start context here makes sure that
+	// this operation is aborted if it blocks too long.
+	ps.printServices(startCtx)
+
 	go ps.run()
 
 	return nil
 }
 
-func (ps *PrintServices) stop(context.Context) error {
+func (ps *PrintServices) Stop(hive.HookContext) error {
 	ps.cancel()
 	ps.wg.Wait()
 	return nil
 }
 
 // printServices prints services at start to show how Store() can be used.
-func (ps *PrintServices) printServices() {
+func (ps *PrintServices) printServices(ctx context.Context) {
 
 	// Retrieve a handle to the store. Blocks until the store has synced.
 	// Can fail if the context is cancelled (e.g. PrintServices is being stopped).
-	store, err := ps.services.Store(ps.ctx)
+	store, err := ps.services.Store(ctx)
 	if err != nil {
 		log.Errorf("Failed to retrieve store: %s, aborting", err)
 		return
@@ -194,8 +208,8 @@ func (ps *PrintServices) processLoop() {
 
 			// Event can be handled synchronously with 'Handle()':
 			ev.Handle(
-				func(store resource.Store[*corev1.Pod]) error {
-					log.Infof("Pods synced (%d pods)", len(store.List()))
+				func() error {
+					log.Info("Pods synced")
 					return nil
 				},
 				func(k resource.Key, pod *corev1.Pod) error {
@@ -228,7 +242,7 @@ func (ps *PrintServices) processLoop() {
 			// (which allows parallel processing of events):
 			switch ev := ev.(type) {
 			case *resource.SyncEvent[*corev1.Service]:
-				log.Infof("Services synced (%d services)", len(ev.Store.List()))
+				log.Info("Services synced")
 			case *resource.UpdateEvent[*corev1.Service]:
 				log.Infof("Service %s updated", ev.Key)
 				if len(ev.Object.Spec.Selector) > 0 {

@@ -31,10 +31,16 @@ const (
 
 	// CESSlicingModeDefault is default method for grouping CEP in a CES.
 	CESSlicingModeDefault = "cesSliceModeIdentity"
+
+	// CNPStatusCleanupQPSDefault is the default rate for the CNP NodeStatus updates GC.
+	CNPStatusCleanupQPSDefault = 10
+
+	// CNPStatusCleanupBurstDefault is the default maximum burst for the CNP NodeStatus updates GC.
+	CNPStatusCleanupBurstDefault = 20
 )
 
 const (
-	// BGPAnnounceLBIP announces service IPs of type LoadBalancer via BGP
+	// BGPAnnounceLBIP announces service IPs of type LoadBalancer via BGP beta (deprecated)
 	BGPAnnounceLBIP = "bgp-announce-lb-ip"
 
 	// BGPConfigPath is the file path to the BGP configuration. It is
@@ -53,6 +59,19 @@ const (
 	// CNPStatusUpdateInterval is the interval between status updates
 	// being sent to the K8s apiserver for a given CNP.
 	CNPStatusUpdateInterval = "cnp-status-update-interval"
+
+	// SkipCNPStatusStartupClean specifies if the cleanup of all the CNP
+	// NodeStatus updates at startup must be skipped.
+	SkipCNPStatusStartupClean = "skip-cnp-status-startup-clean"
+
+	// CNPStatusCleanupQPS is the rate at which the cleanup operation of the status
+	// nodes updates in CNPs is carried out. It is expressed as queries per second,
+	// and for each query a single CNP status update will be deleted.
+	CNPStatusCleanupQPS = "cnp-status-cleanup-qps"
+
+	// CNPStatusCleanupBurst is the maximum burst of queries allowed for the cleanup
+	// operation of the status nodes updates in CNPs.
+	CNPStatusCleanupBurst = "cnp-status-cleanup-burst"
 
 	// EnableMetrics enables prometheus metrics.
 	EnableMetrics = "enable-metrics"
@@ -244,8 +263,19 @@ const (
 	// by ingress-secrets-namespace flag
 	EnableIngressSecretsSync = "enable-ingress-secrets-sync"
 
+	// EnableGatewayAPISecretsSync enables fan-in TLS secrets from multiple namespaces to singular namespace (specified
+	// by gateway-api-secrets-namespace flag
+	EnableGatewayAPISecretsSync = "enable-gateway-api-secrets-sync"
+
 	// IngressSecretsNamespace is the namespace having tls secrets used by Ingress and CEC.
 	IngressSecretsNamespace = "ingress-secrets-namespace"
+
+	// GatewayAPISecretsNamespace is the namespace having tls secrets used by GatewayAPI and CEC.
+	GatewayAPISecretsNamespace = "gateway-api-secrets-namespace"
+
+	// EnableGatewayAPI enables support of Gateway API
+	// This must be enabled along with enable-envoy-config in cilium agent.
+	EnableGatewayAPI = "enable-gateway-api"
 
 	// CiliumK8sNamespace is the namespace where Cilium pods are running.
 	CiliumK8sNamespace = "cilium-pod-namespace"
@@ -272,6 +302,11 @@ const (
 	// IngressDefaultLoadbalancerMode is the default loadbalancer mode for Ingress.
 	// Applicable values: dedicated, shared
 	IngressDefaultLoadbalancerMode = "ingress-default-lb-mode"
+
+	// EnableK8s operation of Kubernet-related services/controllers.
+	// Intended for operating cilium with CNI-compatible orchestrators
+	// other than Kubernetes. (default is true)
+	EnableK8s = "enable-k8s"
 )
 
 // OperatorConfig is the configuration used by the operator.
@@ -287,6 +322,19 @@ type OperatorConfig struct {
 
 	// NodesGCInterval is the GC interval for CiliumNodes
 	NodesGCInterval time.Duration
+
+	// SkipCNPStatusStartupClean disables the cleanup of all the CNP
+	// NodeStatus updates at startup.
+	SkipCNPStatusStartupClean bool
+
+	// CNPStatusCleanupQPS is the rate at which the cleanup operation of the status
+	// nodes updates in CNPs is carried out. It is expressed as queries per second,
+	// and for each query a single CNP status update will be deleted.
+	CNPStatusCleanupQPS float64
+
+	// CNPStatusCleanupBurst is the maximum burst of queries allowed for the cleanup
+	// operation of the status nodes updates in CNPs.
+	CNPStatusCleanupBurst int
 
 	// EnableMetrics enables prometheus metrics.
 	EnableMetrics bool
@@ -342,7 +390,7 @@ type OperatorConfig struct {
 	// retries of the actions in operator HA deployment.
 	LeaderElectionRetryPeriod time.Duration
 
-	// BGPAnnounceLBIP announces service IPs of type LoadBalancer via BGP.
+	// BGPAnnounceLBIP announces service IPs of type LoadBalancer via BGP beta (deprecated)
 	BGPAnnounceLBIP bool
 
 	// BGPConfigPath is the file path to the BGP configuration. It is
@@ -474,14 +522,23 @@ type OperatorConfig struct {
 	// EnableIngressController enables cilium ingress controller
 	EnableIngressController bool
 
+	// EnableGatewayAPI enables support of Gateway API
+	EnableGatewayAPI bool
+
 	// EnforceIngressHTTPS enforces https if required
 	EnforceIngressHTTPS bool
 
-	// EnableIngressSecretsSync enables background TLS secret sync
+	// EnableIngressSecretsSync enables background TLS secret sync for Ingress
 	EnableIngressSecretsSync bool
 
-	// IngressSecretsNamespace is the namespace having tls secrets used by CEC.
+	// EnableGatewayAPISecretsSync enables background TLS secret sync for Gateway API
+	EnableGatewayAPISecretsSync bool
+
+	// IngressSecretsNamespace is the namespace having tls secrets used by CEC for Ingress.
 	IngressSecretsNamespace string
+
+	// GatewayAPISecretsNamespace is the namespace having tls secrets used by CEC for Gateway API.
+	GatewayAPISecretsNamespace string
 
 	// CiliumK8sNamespace is the namespace where Cilium pods are running.
 	CiliumK8sNamespace string
@@ -508,6 +565,11 @@ type OperatorConfig struct {
 	// IngressDefaultLoadbalancerMode is the default loadbalancer mode for Ingress.
 	// Applicable values: dedicated, shared
 	IngressDefaultLoadbalancerMode string
+
+	// Enables/Disables operation of kubernet-related services/controllers.
+	// Intended for operating cilium with CNI-compatible orquestrators
+	// othern than Kubernetes. (default is true)
+	EnableK8s bool
 }
 
 // Populate sets all options with the values from viper.
@@ -515,6 +577,9 @@ func (c *OperatorConfig) Populate(vp *viper.Viper) {
 	c.CNPNodeStatusGCInterval = vp.GetDuration(CNPNodeStatusGCInterval)
 	c.CNPStatusUpdateInterval = vp.GetDuration(CNPStatusUpdateInterval)
 	c.NodesGCInterval = vp.GetDuration(NodesGCInterval)
+	c.SkipCNPStatusStartupClean = vp.GetBool(SkipCNPStatusStartupClean)
+	c.CNPStatusCleanupQPS = vp.GetFloat64(CNPStatusCleanupQPS)
+	c.CNPStatusCleanupBurst = vp.GetInt(CNPStatusCleanupBurst)
 	c.EnableMetrics = vp.GetBool(EnableMetrics)
 	c.EndpointGCInterval = vp.GetDuration(EndpointGCInterval)
 	c.IdentityGCInterval = vp.GetDuration(IdentityGCInterval)
@@ -539,15 +604,19 @@ func (c *OperatorConfig) Populate(vp *viper.Viper) {
 	c.BGPConfigPath = vp.GetString(BGPConfigPath)
 	c.SkipCRDCreation = vp.GetBool(SkipCRDCreation)
 	c.EnableIngressController = vp.GetBool(EnableIngressController)
+	c.EnableGatewayAPI = vp.GetBool(EnableGatewayAPI)
 	c.EnforceIngressHTTPS = vp.GetBool(EnforceIngressHttps)
 	c.IngressSecretsNamespace = vp.GetString(IngressSecretsNamespace)
+	c.GatewayAPISecretsNamespace = vp.GetString(GatewayAPISecretsNamespace)
 	c.EnableIngressSecretsSync = vp.GetBool(EnableIngressSecretsSync)
+	c.EnableGatewayAPISecretsSync = vp.GetBool(EnableGatewayAPISecretsSync)
 	c.CiliumPodLabels = vp.GetString(CiliumPodLabels)
 	c.RemoveCiliumNodeTaints = vp.GetBool(RemoveCiliumNodeTaints)
 	c.SetCiliumIsUpCondition = vp.GetBool(SetCiliumIsUpCondition)
 	c.IngressLBAnnotationPrefixes = vp.GetStringSlice(IngressLBAnnotationPrefixes)
 	c.IngressSharedLBServiceName = vp.GetString(IngressSharedLBServiceName)
 	c.IngressDefaultLoadbalancerMode = vp.GetString(IngressDefaultLoadbalancerMode)
+	c.EnableK8s = vp.GetBool(EnableK8s)
 
 	c.CiliumK8sNamespace = vp.GetString(CiliumK8sNamespace)
 

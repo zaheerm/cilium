@@ -24,7 +24,7 @@ type rule struct {
 
 type ruleMetadata struct {
 	// mutex protects all fields in this type.
-	Mutex lock.RWMutex
+	Mutex lock.Mutex
 
 	// IdentitySelected is a cache that maps from an identity to whether
 	// this rule selects that identity.
@@ -54,7 +54,7 @@ func (r *rule) getSelector() *api.EndpointSelector {
 	return &r.EndpointSelector
 }
 
-func (epd *PerSelectorPolicy) appendL7WildcardRule(ctx *SearchContext) *PerSelectorPolicy {
+func (epd *PerSelectorPolicy) appendL7WildcardRule(ctx *SearchContext) api.L7Rules {
 	// Wildcard rule only needs to be appended if some rules already exist
 	switch {
 	case len(epd.L7Rules.HTTP) > 0:
@@ -94,19 +94,16 @@ func (epd *PerSelectorPolicy) appendL7WildcardRule(ctx *SearchContext) *PerSelec
 			ctx.PolicyTrace("   Merging L7 wildcard rule, equal rule already exists: %+v\n", rule)
 		}
 	}
-	return epd
+	return epd.L7Rules
 }
 
-func mergePortProto(ctx *SearchContext, existingFilter, filterToMerge *L4Filter, selectorCache *SelectorCache) error {
+func mergePortProto(ctx *SearchContext, existingFilter, filterToMerge *L4Filter, selectorCache *SelectorCache) (err error) {
 	// Merge the L7-related data from the filter to merge
 	// with the L7-related data already in the existing filter.
-	if filterToMerge.L7Parser != ParserTypeNone {
-		if existingFilter.L7Parser == ParserTypeNone {
-			existingFilter.L7Parser = filterToMerge.L7Parser
-		} else if filterToMerge.L7Parser != existingFilter.L7Parser {
-			ctx.PolicyTrace("   Merge conflict: mismatching parsers %s/%s\n", filterToMerge.L7Parser, existingFilter.L7Parser)
-			return fmt.Errorf("cannot merge conflicting L7 parsers (%s/%s)", filterToMerge.L7Parser, existingFilter.L7Parser)
-		}
+	existingFilter.L7Parser, err = existingFilter.L7Parser.Merge(filterToMerge.L7Parser)
+	if err != nil {
+		ctx.PolicyTrace("   Merge conflict: mismatching parsers %s/%s\n", filterToMerge.L7Parser, existingFilter.L7Parser)
+		return err
 	}
 
 	for cs, newL7Rules := range filterToMerge.L7RulesPerSelector {
@@ -143,78 +140,72 @@ func mergePortProto(ctx *SearchContext, existingFilter, filterToMerge *L4Filter,
 				continue
 			}
 
-			// nil L7 rules wildcard L7. When merging with a non-nil rule, the nil must be expanded
-			// to an actual wildcard rule for the specific L7
-			if l7Rules.IsEmpty() && !newL7Rules.IsEmpty() {
-				existingFilter.L7RulesPerSelector[cs] = newL7Rules.appendL7WildcardRule(ctx)
-				continue
+			// One of the rules may be a nil rule, expand it to an empty non-nil rule
+			if l7Rules == nil {
+				l7Rules = &PerSelectorPolicy{}
 			}
-			if !l7Rules.IsEmpty() && newL7Rules.IsEmpty() {
-				existingFilter.L7RulesPerSelector[cs] = l7Rules.appendL7WildcardRule(ctx)
-				continue
+			if newL7Rules == nil {
+				newL7Rules = &PerSelectorPolicy{}
 			}
 
-			if !newL7Rules.TerminatingTLS.Equal(l7Rules.TerminatingTLS) {
+			if l7Rules.TerminatingTLS == nil || newL7Rules.TerminatingTLS == nil {
+				if newL7Rules.TerminatingTLS != nil {
+					l7Rules.TerminatingTLS = newL7Rules.TerminatingTLS
+				}
+			} else if !newL7Rules.TerminatingTLS.Equal(l7Rules.TerminatingTLS) {
 				ctx.PolicyTrace("   Merge conflict: mismatching terminating TLS contexts %v/%v\n", newL7Rules.TerminatingTLS, l7Rules.TerminatingTLS)
 				return fmt.Errorf("cannot merge conflicting terminating TLS contexts for cached selector %s: (%v/%v)", cs.String(), newL7Rules.TerminatingTLS, l7Rules.TerminatingTLS)
 			}
-			if !newL7Rules.OriginatingTLS.Equal(l7Rules.OriginatingTLS) {
+			if l7Rules.OriginatingTLS == nil || newL7Rules.OriginatingTLS == nil {
+				if newL7Rules.OriginatingTLS != nil {
+					l7Rules.OriginatingTLS = newL7Rules.OriginatingTLS
+				}
+			} else if !newL7Rules.OriginatingTLS.Equal(l7Rules.OriginatingTLS) {
 				ctx.PolicyTrace("   Merge conflict: mismatching originating TLS contexts %v/%v\n", newL7Rules.OriginatingTLS, l7Rules.OriginatingTLS)
 				return fmt.Errorf("cannot merge conflicting originating TLS contexts for cached selector %s: (%v/%v)", cs.String(), newL7Rules.OriginatingTLS, l7Rules.OriginatingTLS)
 			}
 
-			switch {
-			case len(newL7Rules.HTTP) > 0:
-				if len(l7Rules.Kafka) > 0 || len(l7Rules.DNS) > 0 || l7Rules.L7Proto != "" {
-					ctx.PolicyTrace("   Merge conflict: mismatching L7 rule types.\n")
-					return fmt.Errorf("cannot merge conflicting L7 rule types")
-				}
-
-				for _, newRule := range newL7Rules.HTTP {
-					if !newRule.Exists(l7Rules.L7Rules) {
-						l7Rules.HTTP = append(l7Rules.HTTP, newRule)
-					}
-				}
-			case len(newL7Rules.Kafka) > 0:
-				if len(l7Rules.HTTP) > 0 || len(l7Rules.DNS) > 0 || l7Rules.L7Proto != "" {
-					ctx.PolicyTrace("   Merge conflict: mismatching L7 rule types.\n")
-					return fmt.Errorf("cannot merge conflicting L7 rule types")
-				}
-
-				for _, newRule := range newL7Rules.Kafka {
-					if !newRule.Exists(l7Rules.L7Rules.Kafka) {
-						l7Rules.Kafka = append(l7Rules.Kafka, newRule)
-					}
-				}
-			case newL7Rules.L7Proto != "":
-				if len(l7Rules.Kafka) > 0 || len(l7Rules.HTTP) > 0 || len(l7Rules.DNS) > 0 || (l7Rules.L7Proto != "" && l7Rules.L7Proto != newL7Rules.L7Proto) {
-					ctx.PolicyTrace("   Merge conflict: mismatching L7 rule types.\n")
-					return fmt.Errorf("cannot merge conflicting L7 rule types")
-				}
-				if l7Rules.L7Proto == "" {
-					l7Rules.L7Proto = newL7Rules.L7Proto
-				}
-
-				for _, newRule := range newL7Rules.L7 {
-					if !newRule.Exists(l7Rules.L7Rules) {
-						l7Rules.L7 = append(l7Rules.L7, newRule)
-					}
-				}
-			case len(newL7Rules.DNS) > 0:
-				if len(l7Rules.HTTP) > 0 || len(l7Rules.Kafka) > 0 || len(l7Rules.L7) > 0 {
-					ctx.PolicyTrace("   Merge conflict: mismatching L7 rule types.\n")
-					return fmt.Errorf("cannot merge conflicting L7 rule types")
-				}
-
-				for _, newRule := range newL7Rules.DNS {
-					if !newRule.Exists(l7Rules.L7Rules) {
-						l7Rules.DNS = append(l7Rules.DNS, newRule)
-					}
-				}
-
-			default:
-				ctx.PolicyTrace("   No L7 rules to merge.\n")
+			// empty L7 rules effectively wildcard L7. When merging with a non-empty
+			// rule, the empty must be expanded to an actual wildcard rule for the
+			// specific L7
+			if !l7Rules.HasL7Rules() && newL7Rules.HasL7Rules() {
+				l7Rules.L7Rules = newL7Rules.appendL7WildcardRule(ctx)
+				existingFilter.L7RulesPerSelector[cs] = l7Rules
+				continue
 			}
+			if l7Rules.HasL7Rules() && !newL7Rules.HasL7Rules() {
+				l7Rules.appendL7WildcardRule(ctx)
+				existingFilter.L7RulesPerSelector[cs] = l7Rules
+				continue
+			}
+
+			// We already know from the L7Parser.Merge() above that there are no
+			// conflicting parser types, and rule validation only allows one type of L7
+			// rules in a rule, so we can just merge the rules here.
+			for _, newRule := range newL7Rules.HTTP {
+				if !newRule.Exists(l7Rules.L7Rules) {
+					l7Rules.HTTP = append(l7Rules.HTTP, newRule)
+				}
+			}
+			for _, newRule := range newL7Rules.Kafka {
+				if !newRule.Exists(l7Rules.L7Rules.Kafka) {
+					l7Rules.Kafka = append(l7Rules.Kafka, newRule)
+				}
+			}
+			if l7Rules.L7Proto == "" && newL7Rules.L7Proto != "" {
+				l7Rules.L7Proto = newL7Rules.L7Proto
+			}
+			for _, newRule := range newL7Rules.L7 {
+				if !newRule.Exists(l7Rules.L7Rules) {
+					l7Rules.L7 = append(l7Rules.L7, newRule)
+				}
+			}
+			for _, newRule := range newL7Rules.DNS {
+				if !newRule.Exists(l7Rules.L7Rules) {
+					l7Rules.DNS = append(l7Rules.DNS, newRule)
+				}
+			}
+			// Update the pointer in the map in case it was newly allocated
 			existingFilter.L7RulesPerSelector[cs] = l7Rules
 		} else { // 'cs' is not in the existing filter yet
 			// Update selector owner to the existing filter

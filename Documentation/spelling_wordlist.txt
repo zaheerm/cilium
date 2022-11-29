@@ -172,6 +172,7 @@ apiKeys
 apiVersion
 apiserver
 app
+applySysctlOverwrites
 apps
 archs
 arithmetics
@@ -253,9 +254,11 @@ cheatsheet
 ci
 cidr
 cidrs
+ciliumAgent
 classful
 classid
 cleanBpfState
+cleanCiliumState
 cleanState
 cli
 clockProbe
@@ -330,6 +333,7 @@ decrypted
 deepcopy
 deletetopic
 demux
+dependant
 dereference
 deserialization
 destinationContext
@@ -344,6 +348,7 @@ disassembly
 discoverable
 distro
 distros
+dmesg
 dns
 dnsPolicy
 dnsProxy
@@ -376,9 +381,11 @@ enableIPv
 enableIdentityMark
 enableIngressController
 enableK
+enableOpenMetrics
 enableRuntimeDeviceDetection
 enableXTSocketFallback
 enablement
+endPort
 endian
 endianness
 endpointGCInterval
@@ -421,7 +428,6 @@ filenames
 filesystem
 filesystems
 firewalling
-flowBufferSize
 followup
 foobar
 foundational
@@ -439,6 +445,7 @@ functionalities
 fwmark
 gRPC
 gVNIC
+gatewayAPI
 gcInterval
 gcTags
 gcc
@@ -479,6 +486,7 @@ hostAliases
 hostBoot
 hostConfDirMountPath
 hostFirewall
+hostLegacyRouting
 hostNetwork
 hostPath
 hostPort
@@ -571,6 +579,7 @@ kata
 keepDeprecatedLabels
 keepDeprecatedProbes
 keyFile
+keyless
 keypair
 keyspace
 keyspaces
@@ -580,6 +589,7 @@ kprobe
 kprobes
 kretprobes
 kube
+kubeConfigPath
 kubeProxyReplacement
 kubeProxyReplacementHealthzBindAddr
 kubeadm
@@ -594,6 +604,7 @@ kvstore
 labelsContext
 latencies
 lbExternalClusterIP
+lbIPAM
 lbMapMax
 leia
 libbpf
@@ -618,6 +629,7 @@ livenessProbe
 llc
 llvm
 loadBalancer
+loadBalancerClass
 loadbalancer
 loadbalancerIP
 loadbalancerMode
@@ -672,6 +684,7 @@ mlx
 monitorAggregation
 monitorFlags
 monitorInterval
+mountCgroup
 mountHostBoot
 mountPath
 mov
@@ -720,6 +733,7 @@ nodeSelector
 nodeX
 nodegroup
 nodeinit
+nodeport
 nonMasqueradeCIDRs
 numReplicas
 observability
@@ -736,6 +750,7 @@ orchestrator
 org
 originatingTLS
 pahole
+parsable
 parserfactory
 parsers
 passthrough
@@ -750,6 +765,7 @@ pluggable
 plugin
 plugins
 pmdabcc
+pmtuDiscovery
 png
 podAnnotations
 podCIDR
@@ -770,6 +786,7 @@ preCache
 preallocateMaps
 prebuild
 preconfigured
+preferIpv
 prefilter
 preflight
 preload
@@ -822,6 +839,7 @@ refreshPeriod
 regenerations
 regex
 regexes
+relabelings
 relocations
 remoteNodeIdentity
 removeNodeTaints
@@ -887,7 +905,9 @@ sid
 sidecarImageRegex
 sig
 skb
+skipCNPStatusStartupClean
 skipCRDCreation
+skipUnknownCGroupIDs
 skipteardown
 sleepAfterInit
 snat
@@ -910,6 +930,7 @@ startup
 startupProbe
 stateful
 statefulset
+statelessNat
 statsd
 stdout
 structs
@@ -1022,6 +1043,7 @@ virtio
 virtualbox
 virtualization
 vlan
+vlanBypass
 vmlinux
 volumeMounts
 vrf

@@ -81,7 +81,7 @@ func Enable(ipv4, ipv6 bool, restoredEndpoints []*endpoint.Endpoint, mgr Endpoin
 						return
 					}
 					if ep, exists := epsMap[srcIP]; exists {
-						ep.MarkDNSCTEntry(dstIP.AsSlice(), aliveTime)
+						ep.MarkDNSCTEntry(dstIP, aliveTime)
 					}
 				}
 			)
@@ -224,6 +224,7 @@ func runGC(e *endpoint.Endpoint, ipv4, ipv6, triggeredBySignal bool, filter *ctm
 					"ingressDeleted": stats.IngressDeleted,
 					"egressDeleted":  stats.EgressDeleted,
 					"ingressAlive":   stats.IngressAlive,
+					"egressAlive":    stats.EgressAlive,
 					"ctMapIPVersion": vsn,
 				}).Info("Deleted orphan SNAT entries from map")
 			}

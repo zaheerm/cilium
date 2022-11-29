@@ -149,6 +149,25 @@ have it scrape all Hubble metrics from the endpoints automatically:
             regex: (.+)(?::\d+);(\d+)
             replacement: $1:$2
 
+OpenMetrics
+-----------
+
+Additionally, you can opt-in to `OpenMetrics <https://openmetrics.io>`_ by
+setting ``hubble.metrics.enableOpenMetrics=true``.
+Enabling OpenMetrics configures the Hubble metrics endpoint to support exporting
+metrics in OpenMetrics format when explicitly requested by clients.
+
+Using OpenMetrics supports additional functionality such as Exemplars, which
+enables associating metrics with traces by embedding trace IDs into the
+exported metrics.
+
+Prometheus needs to be configured to take advantage of OpenMetrics. and will
+only use OpenMetrics format when the `exemplars storage feature is enabled
+<https://prometheus.io/docs/prometheus/latest/feature_flags/#exemplars-storage>`_.
+
+OpenMetrics imposes a few additional requirements on metrics names and labels,
+so this functionality is currently opt-in, though we believe all of the Hubble
+metrics conform to the OpenMetrics requirements.
 
 Example Prometheus & Grafana Deployment
 =======================================
@@ -184,8 +203,18 @@ To expose any metrics, invoke ``cilium-agent`` with the
 passing an empty IP (e.g. ``:9962``) will bind the server to all available
 interfaces (there is usually only one in a container).
 
-Exported Metrics
-^^^^^^^^^^^^^^^^
+To customize ``cilium-agent`` metrics, configure the ``--metrics`` option with
+``"+metric_a -metric_b -metric_c"``, where ``+/-`` means to enable/disable
+the metric. For example, for really large clusters, users may consider to
+disable the following two metrics as they generate too much data:
+
+- ``cilium_node_connectivity_status``
+- ``cilium_node_connectivity_latency_seconds``
+
+You can then configure the agent with ``--metrics="-cilium_node_connectivity_status -cilium_node_connectivity_latency_seconds"``.
+
+Exported Metrics by Default
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Endpoint
 ~~~~~~~~
@@ -406,31 +435,31 @@ Name                             Labels                           Default    Des
 FQDN
 ~~~~
 
-================================== ================================ =========== ========================================================
-Name                               Labels                           Default     Description
-================================== ================================ =========== ========================================================
-``fqdn_gc_deletions_total``                                         Enabled     Number of FQDNs that have been cleaned on FQDN garbage collector job
-``fqdn_active_names``              ``endpoint``                     Enabled     Number of domains inside the DNS cache that have not expired (by TTL), per endpoint
-``fqdn_active_ips``                ``endpoint``                     Enabled     Number of IPs inside the DNS cache associated with a domain that has not expired (by TTL), per endpoint
-``fqdn_alive_zombie_connections``  ``endpoint``                     Enabled     Number of IPs associated with domains that have expired (by TTL) yet still associated with an active connection (aka zombie), per endpoint
-================================== ================================ =========== ========================================================
+================================== ================================ ============ ========================================================
+Name                               Labels                           Default      Description
+================================== ================================ ============ ========================================================
+``fqdn_gc_deletions_total``                                         Enabled      Number of FQDNs that have been cleaned on FQDN garbage collector job
+``fqdn_active_names``              ``endpoint``                     Disabled     Number of domains inside the DNS cache that have not expired (by TTL), per endpoint
+``fqdn_active_ips``                ``endpoint``                     Disabled     Number of IPs inside the DNS cache associated with a domain that has not expired (by TTL), per endpoint
+``fqdn_alive_zombie_connections``  ``endpoint``                     Disabled     Number of IPs associated with domains that have expired (by TTL) yet still associated with an active connection (aka zombie), per endpoint
+================================== ================================ ============ ========================================================
 
 .. _metrics_api_rate_limiting:
 
 API Rate Limiting
 ~~~~~~~~~~~~~~~~~
 
-===================================================== ================================ ========== ========================================================
-Name                                                  Labels                           Default    Description
-===================================================== ================================ ========== ========================================================
-``cilium_api_limiter_adjustment_factor``              ``api_call``                     Enabled    Most recent adjustment factor for automatic adjustment
-``cilium_api_limiter_processed_requests_total``       ``api_call``, ``outcome``        Enabled    Total number of API requests processed
-``cilium_api_limiter_processing_duration_seconds``    ``api_call``, ``value``          Enabled    Mean and estimated processing duration in seconds
-``cilium_api_limiter_rate_limit``                     ``api_call``, ``value``          Enabled    Current rate limiting configuration (limit and burst)
-``cilium_api_limiter_requests_in_flight``             ``api_call``  ``value``          Enabled    Current and maximum allowed number of requests in flight
-``cilium_api_limiter_wait_duration_seconds``          ``api_call``, ``value``          Enabled    Mean, min, and max wait duration
-``cilium_api_limiter_wait_history_duration_seconds``  ``api_call``                     Disabled   Histogram of wait duration per API call processed
-===================================================== ================================ ========== ========================================================
+============================================== ================================ ========== ========================================================
+Name                                           Labels                           Default    Description
+============================================== ================================ ========== ========================================================
+``api_limiter_adjustment_factor``              ``api_call``                     Enabled    Most recent adjustment factor for automatic adjustment
+``api_limiter_processed_requests_total``       ``api_call``, ``outcome``        Enabled    Total number of API requests processed
+``api_limiter_processing_duration_seconds``    ``api_call``, ``value``          Enabled    Mean and estimated processing duration in seconds
+``api_limiter_rate_limit``                     ``api_call``, ``value``          Enabled    Current rate limiting configuration (limit and burst)
+``api_limiter_requests_in_flight``             ``api_call``  ``value``          Enabled    Current and maximum allowed number of requests in flight
+``api_limiter_wait_duration_seconds``          ``api_call``, ``value``          Enabled    Mean, min, and max wait duration
+``api_limiter_wait_history_duration_seconds``  ``api_call``                     Disabled   Histogram of wait duration per API call processed
+============================================== ================================ ========== ========================================================
 
 cilium-operator
 ---------------

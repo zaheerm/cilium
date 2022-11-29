@@ -23,12 +23,12 @@ concurrency:
 env:
   kind_version: v0.11.1
   kind_config: .github/kind-config.yaml
-  cilium_cli_version: v0.12.4
+  cilium_cli_version: v0.12.7
 
 jobs:
   installation-and-connectivity:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout master branch to access local actions
         uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
@@ -70,7 +70,7 @@ jobs:
           HUBBLE_ENABLE_DEFAULTS="--chart-directory=install/kubernetes/cilium \
             --relay-image=quay.io/${{ env.QUAY_ORGANIZATION_DEV }}/hubble-relay-ci:${SHA} \
             --relay-version=${SHA}"
-          CONNECTIVITY_TEST_DEFAULTS="--flow-validation=disabled"
+          CONNECTIVITY_TEST_DEFAULTS="--flow-validation=disabled --hubble=false"
           echo ::set-output name=cilium_install_defaults::${CILIUM_INSTALL_DEFAULTS}
           echo ::set-output name=hubble_enable_defaults::${HUBBLE_ENABLE_DEFAULTS}
           echo ::set-output name=connectivity_test_defaults::${CONNECTIVITY_TEST_DEFAULTS}

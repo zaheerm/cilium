@@ -35,8 +35,8 @@ func init() {
 	}
 }
 
-// enableCNPWatcher waits for the CiliumNetowrkPolicy CRD availability and then
-// garbage collects stale CiliumNetowrkPolicy status field entries.
+// enableCNPWatcher waits for the CiliumNetworkPolicy CRD availability and then
+// garbage collects stale CiliumNetworkPolicy status field entries.
 func enableCNPWatcher(clientset k8sClient.Clientset) error {
 	enableCNPStatusUpdates := kvstoreEnabled() && option.Config.K8sEventHandover && !option.Config.DisableCNPStatusUpdates
 	if enableCNPStatusUpdates {
@@ -50,7 +50,7 @@ func enableCNPWatcher(clientset k8sClient.Clientset) error {
 	cnpStore := cache.NewStore(cache.DeletionHandlingMetaNamespaceKeyFunc)
 
 	if enableCNPStatusUpdates {
-		cnpStatusMgr = k8s.NewCNPStatusEventHandler(cnpStore, cnpStatusUpdateInterval)
+		cnpStatusMgr = k8s.NewCNPStatusEventHandler(clientset, cnpStore, cnpStatusUpdateInterval)
 		cnpSharedStore, err := store.JoinSharedStore(store.Configuration{
 			Prefix: k8s.CNPStatusesPath,
 			KeyCreator: func() store.Key {
@@ -81,7 +81,7 @@ func enableCNPWatcher(clientset k8sClient.Clientset) error {
 					// See https://github.com/cilium/cilium/blob/27fee207f5422c95479422162e9ea0d2f2b6c770/pkg/policy/api/ingress.go#L112-L134
 					cnpCpy := cnp.DeepCopy()
 
-					groups.AddDerivativeCNPIfNeeded(cnpCpy.CiliumNetworkPolicy)
+					groups.AddDerivativeCNPIfNeeded(clientset, cnpCpy.CiliumNetworkPolicy)
 					if enableCNPStatusUpdates {
 						cnpStatusMgr.StartStatusHandler(cnpCpy)
 					}
@@ -101,7 +101,7 @@ func enableCNPWatcher(clientset k8sClient.Clientset) error {
 						newCNPCpy := newCNP.DeepCopy()
 						oldCNPCpy := oldCNP.DeepCopy()
 
-						groups.UpdateDerivativeCNPIfNeeded(newCNPCpy.CiliumNetworkPolicy, oldCNPCpy.CiliumNetworkPolicy)
+						groups.UpdateDerivativeCNPIfNeeded(clientset, newCNPCpy.CiliumNetworkPolicy, oldCNPCpy.CiliumNetworkPolicy)
 					}
 				}
 			},
@@ -127,7 +127,7 @@ func enableCNPWatcher(clientset k8sClient.Clientset) error {
 	controller.NewManager().UpdateController("cnp-to-groups",
 		controller.ControllerParams{
 			DoFunc: func(ctx context.Context) error {
-				groups.UpdateCNPInformation()
+				groups.UpdateCNPInformation(clientset)
 				return nil
 			},
 			RunInterval: 5 * time.Minute,

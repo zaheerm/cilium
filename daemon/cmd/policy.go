@@ -26,7 +26,6 @@ import (
 	"github.com/cilium/cilium/pkg/eventqueue"
 	"github.com/cilium/cilium/pkg/identity"
 	"github.com/cilium/cilium/pkg/identity/cache"
-	"github.com/cilium/cilium/pkg/k8s"
 	"github.com/cilium/cilium/pkg/labels"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	bpfIPCache "github.com/cilium/cilium/pkg/maps/ipcache"
@@ -57,7 +56,7 @@ func (d *Daemon) initPolicy(epMgr *endpointmanager.EndpointManager) error {
 
 	d.policy = policy.NewPolicyRepository(d.identityAllocator,
 		d.identityAllocator.GetIdentityCache(),
-		certificatemanager.NewManager(option.Config.CertDirectory, k8s.Client()))
+		certificatemanager.NewManager(option.Config.CertDirectory, d.clientset))
 	d.policy.SetEnvoyRulesFunc(envoy.GetEnvoyHTTPRules)
 	d.policyUpdater, err = policy.NewUpdater(d.policy, epMgr)
 	if err != nil {
@@ -553,26 +552,6 @@ func (d *Daemon) policyDelete(labels labels.LabelArray, res chan interface{}) {
 
 	d.policy.Mutex.Lock()
 
-	// First, find rules by the label. We'll use this set of rules to
-	// determine which CIDR identities that we need to release.
-	rules := d.policy.SearchRLocked(labels)
-
-	// Return an error if a label filter was provided and there are no
-	// rules matching it. A deletion request for all policy entries should
-	// not fail if no policies are loaded.
-	if len(rules) == 0 && len(labels) != 0 {
-		rev := d.policy.GetRevision()
-		d.policy.Mutex.Unlock()
-
-		err := api.New(DeletePolicyNotFoundCode, "policy not found")
-
-		res <- &PolicyDeleteResult{
-			newRev: rev,
-			err:    err,
-		}
-		return
-	}
-
 	// policySelectionWG is used to signal when the updating of all of the
 	// caches of allEndpoints in the rules which were added / updated have been
 	// updated.
@@ -588,6 +567,22 @@ func (d *Daemon) policyDelete(labels labels.LabelArray, res chan interface{}) {
 	endpointsToRegen := policy.NewEndpointSet(nil)
 
 	deletedRules, rev, deleted := d.policy.DeleteByLabelsLocked(labels)
+
+	// Return an error if a label filter was provided and there are no
+	// rules matching it. A deletion request for all policy entries should
+	// not fail if no policies are loaded.
+	if len(deletedRules) == 0 && len(labels) != 0 {
+		rev := d.policy.GetRevision()
+		d.policy.Mutex.Unlock()
+
+		err := api.New(DeletePolicyNotFoundCode, "policy not found")
+
+		res <- &PolicyDeleteResult{
+			newRev: rev,
+			err:    err,
+		}
+		return
+	}
 	deletedRules.UpdateRulesEndpointsCaches(epsToBumpRevision, endpointsToRegen, &policySelectionWG)
 
 	res <- &PolicyDeleteResult{
@@ -603,7 +598,7 @@ func (d *Daemon) policyDelete(labels labels.LabelArray, res chan interface{}) {
 	// We don't treat failures to clean up identities as API failures,
 	// because the policy can still successfully be updated. We're just
 	// not appropriately performing garbage collection.
-	prefixes := policy.GetCIDRPrefixes(rules)
+	prefixes := policy.GetCIDRPrefixes(deletedRules.AsPolicyRules())
 	log.WithField("prefixes", prefixes).Debug("Policy deleted via API, found prefixes...")
 
 	prefixesChanged := d.prefixLengths.Delete(prefixes)

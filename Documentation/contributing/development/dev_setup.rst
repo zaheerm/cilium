@@ -151,8 +151,8 @@ brought up by vagrant:
   test/bpf/verifier-test.sh``.
 * ``IPV4=1``: Run Cilium with IPv4 enabled.
 * ``RUNTIME=x``: Sets up the container runtime to be used inside a kubernetes
-  cluster. Valid options are: ``docker``, ``containerd`` and ``crio``. If not
-  set, it defaults to ``docker``.
+  cluster. Valid options are: ``containerd`` and ``crio``. If not
+  set, it defaults to ``containerd``.
 * ``VM_SET_PROXY=https://127.0.0.1:80/`` Sets up VM's ``https_proxy``.
 * ``INSTALL=1``: Restarts the installation of Cilium, Kubernetes, etc. Only
   useful when the installation was interrupted.
@@ -315,6 +315,15 @@ to enable NFS.
       # vers2=n
       # vers3=y
       ...
+
+.. note::
+
+   Linux 5.18 on newer Intel CPUs which support Intel CET (11th and
+   12th gen) has a bug that prevents the VMs from starting. If you see
+   a stacktrace with ``kernel BUG at arch/x86/kernel/traps.c`` and
+   ``traps: Missing ENDBR`` messages in dmesg, that means you are
+   affected. A workaround for now is to pass ``ibt=off`` to the kernel
+   command line.
 
 If for some reason, running of the provisioning script fails, you should bring the VM down before trying again:
 
@@ -508,10 +517,10 @@ Minor version
    date with these changes.
 
 #  Update documentation files:
-   - Documentation/concepts/kubernetes/compatibility.rst
-   - Documentation/concepts/kubernetes/requirements.rst
    - Documentation/contributing/testing/e2e.rst
-   - Documentation/gettingstarted/istio.rst
+   - Documentation/network/istio.rst
+   - Documentation/network/kubernetes/compatibility.rst
+   - Documentation/network/kubernetes/requirements.rst
 
 #. Update the Kubernetes version with the newer version in ``test/Vagrantfile``,
    ``test/test_suite_test.go`` and ``test/vagrant-local-start.sh``.
@@ -550,7 +559,7 @@ Minor version
 #. Provision a new dev VM to check if the provisioning scripts work correctly
    with the new k8s version.
 
-#. Run ``git add vendor/ test/provision/manifest/ Documentation/ && git commit -sam "Update k8s tests and libraries to v1.23.0-rc.0"``
+#. Run ``git add vendor/ test/provision/manifest/ Documentation/ && git commit -sam "Update k8s tests and libraries to v1.27.0-rc.0"``
 
 #. Submit all your changes into a new PR.
 

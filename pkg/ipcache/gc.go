@@ -20,6 +20,9 @@ type asyncPrefixReleaser struct {
 	*trigger.Trigger
 	prefixReleaser
 
+	closeChan chan struct{} // Daemon closes this when shutting down.
+	doneChan  chan struct{} // Trigger closes this to confirm shutdown.
+
 	// Mutex protects read and write to 'queue'.
 	lock.Mutex
 	queue []netip.Prefix
@@ -29,10 +32,12 @@ type prefixReleaser interface {
 	releaseCIDRIdentities(ctx context.Context, identities []netip.Prefix)
 }
 
-func newAsyncPrefixReleaser(parent prefixReleaser, interval time.Duration) *asyncPrefixReleaser {
+func newAsyncPrefixReleaser(parentCtx context.Context, parent prefixReleaser, interval time.Duration) *asyncPrefixReleaser {
 	result := &asyncPrefixReleaser{
 		queue:          make([]netip.Prefix, 0),
 		prefixReleaser: parent,
+		closeChan:      make(chan struct{}),
+		doneChan:       make(chan struct{}),
 	}
 
 	// trigger needs to be updated to reference the object above
@@ -41,23 +46,40 @@ func newAsyncPrefixReleaser(parent prefixReleaser, interval time.Duration) *asyn
 		Name:        "ipcache-identity-gc",
 		MinInterval: interval,
 		TriggerFunc: func(reasons []string) {
-			// TODO: Structure the code to pass context down
-			//       from the Daemon.
 			ctx, cancel := context.WithTimeout(
-				context.TODO(),
+				parentCtx,
 				option.Config.KVstoreConnectivityTimeout)
 			defer cancel()
 			result.run(ctx, reasons...)
+		},
+		ShutdownFunc: func() {
+			close(result.doneChan)
 		},
 	})
 
 	return result
 }
 
+func (pr *asyncPrefixReleaser) Shutdown() {
+	close(pr.closeChan)
+	pr.Trigger.Shutdown()
+	<-pr.doneChan
+}
+
 // enqueue a set of prefixes to be released asynchronously.
 func (pr *asyncPrefixReleaser) enqueue(prefixes []netip.Prefix, reason string) {
 	pr.Lock()
 	defer pr.Unlock()
+	select {
+	case <-pr.closeChan:
+		log.WithFields(logrus.Fields{
+			logfields.CIDRS:  prefixes,
+			logfields.Reason: reason,
+		}).Debug("Received request to release prefixes but the daemon is shutting down")
+		return
+	default:
+		// fallthrough
+	}
 	pr.queue = append(pr.queue, prefixes...)
 	pr.TriggerWithReason(reason)
 }

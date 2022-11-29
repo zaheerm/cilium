@@ -4,7 +4,6 @@
 package gops
 
 import (
-	"context"
 	"fmt"
 
 	gopsAgent "github.com/google/gops/agent"
@@ -22,6 +21,8 @@ import (
 func Cell(defaultPort uint16) cell.Cell {
 	return cell.Module(
 		"gops",
+		"Gops Agent",
+
 		cell.Config(GopsConfig{GopsPort: defaultPort}),
 		cell.Invoke(registerGopsHooks),
 	)
@@ -40,14 +41,14 @@ func registerGopsHooks(lc hive.Lifecycle, log logrus.FieldLogger, cfg GopsConfig
 	addrField := logrus.Fields{"address": addr, logfields.LogSubsys: "gops"}
 	log = log.WithFields(addrField)
 	lc.Append(hive.Hook{
-		OnStart: func(context.Context) error {
+		OnStart: func(hive.HookContext) error {
 			log.Info("Started gops server")
 			return gopsAgent.Listen(gopsAgent.Options{
 				Addr:                   addr,
 				ReuseSocketAddrAndPort: true,
 			})
 		},
-		OnStop: func(context.Context) error {
+		OnStop: func(hive.HookContext) error {
 			gopsAgent.Close()
 			log.Info("Stopped gops server")
 			return nil

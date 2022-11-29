@@ -19,7 +19,6 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/cilium/cilium/pkg/datapath/linux/probes"
-	"github.com/cilium/cilium/pkg/k8s"
 	"github.com/cilium/cilium/pkg/lock"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	"github.com/cilium/cilium/pkg/mac"
@@ -58,14 +57,14 @@ func NewDeviceManager() (*DeviceManager, error) {
 func NewDeviceManagerAt(netns netns.NsHandle) (*DeviceManager, error) {
 	handle, err := netlink.NewHandleAt(netns)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to setup device manager: %w", err)
 	}
 	return &DeviceManager{
 		devices: make(map[string]struct{}),
 		filter:  deviceFilter(option.Config.GetDevices()),
 		handle:  handle,
 		netns:   netns,
-	}, err
+	}, nil
 }
 
 // Detect tries to detect devices to which BPF programs may be loaded.
@@ -73,7 +72,7 @@ func NewDeviceManagerAt(netns netns.NsHandle) (*DeviceManager, error) {
 //
 // The devices are detected by looking at all the configured global unicast
 // routes in the system.
-func (dm *DeviceManager) Detect() ([]string, error) {
+func (dm *DeviceManager) Detect(k8sEnabled bool) ([]string, error) {
 	dm.Lock()
 	defer dm.Unlock()
 	dm.devices = make(map[string]struct{})
@@ -133,7 +132,7 @@ func (dm *DeviceManager) Detect() ([]string, error) {
 		if err == nil {
 			k8sNodeDev = k8sNodeLink.Attrs().Name
 			dm.devices[k8sNodeDev] = struct{}{}
-		} else if k8s.IsEnabled() {
+		} else if k8sEnabled {
 			return nil, fmt.Errorf("k8s is enabled, but still failed to find node IP: %w", err)
 		}
 

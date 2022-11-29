@@ -211,14 +211,6 @@ If you only wish to update the packages in these images, then you can manually
 update the ``FORCE_BUILD`` variable in ``images/runtime/Dockerfile`` to have a
 different value and then proceed with the steps below.
 
-#. cilium-builder depends on cilium-runtime so one needs to update
-   cilium-runtime first. Steps 4 and 7 will fetch the digest of the image built
-   by GitHub actions.
-
-   .. code-block:: shell-session
-
-       $ make -C images/ update-runtime-image
-
 #. Commit your changes and create a PR in cilium/cilium.
 
    .. code-block:: shell-session
@@ -229,32 +221,22 @@ different value and then proceed with the steps below.
    to approve the build that was created by GitHub Actions `here <https://github.com/cilium/cilium/actions?query=workflow:%22Base+Image+Release+Build%22>`__.
    Note that at this step cilium-builder build failure is expected since we have yet to update the runtime digest.
 
-#. Wait for cilium-runtime build to complete. Only after the image is available run:
+#. Wait for build to complete. If the PR was opened from an external fork the
+   build will fail while trying to push the changes, this is expected.
+
+#. If the PR was opened from an external fork, run the following commands and
+   re-push the changes to your branch. Once this is done the CI can be executed.
 
    .. code-block:: shell-session
 
-       $ make -C images/ update-runtime-image update-builder-image
+       $ make -C images/ update-runtime-image
+       $ git commit -sam "images: update cilium-{runtime,builder}" --amend
+       $ make -C images/ update-builder-image
+       $ git commit -sam "images: update cilium-{runtime,builder}" --amend
 
-#. Commit your changes and re-push to the PR in cilium/cilium.
-
-   .. code-block:: shell-session
-
-       $ git commit --amend -sa
-
-#. Ping one of the members of `team/build <https://github.com/orgs/cilium/teams/build/members>`__
-   to approve the build that was created by GitHub Actions `here <https://github.com/cilium/cilium/actions?query=workflow:%22Base+Image+Release+Build%22>`__.
-
-#. Wait for the build to complete. Only after the image is available run:
-
-   .. code-block:: shell-session
-
-       $ make -C images/ update-runtime-image update-builder-image
-
-#. Commit your changes and re-push to the PR in cilium/cilium.
-
-   .. code-block:: shell-session
-
-       $ git commit --amend -sa
+#. If the PR was opened from the main repository, the build will automatically
+   generate one commit and push it to your branch with all the necessary changes
+   across files in the repository. Once this is done the CI can be executed.
 
 #. Update the versions of the images that are pulled into the CI VMs.
 

@@ -49,7 +49,7 @@ func TestLocalNodeStore(t *testing.T) {
 	// the local node.
 	update := func(lc hive.Lifecycle, store LocalNodeStore) {
 		lc.Append(hive.Hook{
-			OnStart: func(context.Context) error {
+			OnStart: func(hive.HookContext) error {
 				// emit 2, 3, 4, 5
 				for _, i := range expected[1:] {
 					store.Update(func(n *types.Node) {
@@ -62,7 +62,7 @@ func TestLocalNodeStore(t *testing.T) {
 	}
 
 	hive := hive.New(
-		LocalNodeStoreCell,
+		cell.Provide(NewLocalNodeStore),
 
 		cell.Provide(func() LocalNodeInitializer { return testInitializer{} }),
 		cell.Invoke(observe),

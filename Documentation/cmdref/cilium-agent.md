@@ -49,7 +49,7 @@ cilium-agent [flags]
       --bpf-lb-rss-ipv6-src-cidr string                         BPF load balancing RSS outer source IPv6 CIDR prefix for IPIP
       --bpf-lb-sock                                             Enable socket-based LB for E/W traffic
       --bpf-lb-sock-hostns-only                                 Skip socket LB for services when inside a pod namespace, in favor of service LB at the pod interface. Socket LB is still used when in the host namespace. Required by service mesh (e.g., Istio, Linkerd).
-      --bpf-map-dynamic-size-ratio float                        Ratio (0.0-1.0) of total system memory to use for dynamic sizing of CT, NAT and policy BPF maps. Set to 0.0 to disable dynamic BPF map sizing (default: 0.0)
+      --bpf-map-dynamic-size-ratio float                        Ratio (0.0-1.0] of total system memory to use for dynamic sizing of CT, NAT and policy BPF maps (default 0.0025)
       --bpf-nat-global-max int                                  Maximum number of entries for the global BPF NAT table (default 524288)
       --bpf-neigh-global-max int                                Maximum number of entries for the global BPF neighbor table (default 524288)
       --bpf-policy-map-max int                                  Maximum number of entries in endpoint policy map (per endpoint) (default 16384)
@@ -121,6 +121,7 @@ cilium-agent [flags]
       --enable-local-redirect-policy                            Enable Local Redirect Policy
       --enable-monitor                                          Enable the monitor unix domain socket server (default true)
       --enable-node-port                                        Enable NodePort type services by Cilium
+      --enable-pmtu-discovery                                   Enable path MTU discovery to send ICMP fragmentation-needed replies to the client
       --enable-policy string                                    Enable policy enforcement (default "default")
       --enable-recorder                                         Enable BPF datapath pcap recorder
       --enable-remote-node-identity                             Enable use of remote node identity
@@ -128,6 +129,7 @@ cilium-agent [flags]
       --enable-sctp                                             Enable SCTP support (beta)
       --enable-service-topology                                 Enable support for service topology aware hints
       --enable-session-affinity                                 Enable support for service session affinity
+      --enable-stateless-nat46x64                               Enable stateless NAT46 and NAT64 support
       --enable-svc-source-range-check                           Enable check of service source ranges (currently, only for LoadBalancer) (default true)
       --enable-tracing                                          Enable tracing while determining policy (debugging)
       --enable-unreachable-routes                               Add unreachable routes on pod deletion
@@ -144,7 +146,6 @@ cilium-agent [flags]
       --envoy-log string                                        Path to a separate Envoy log file, if any
       --exclude-local-address strings                           Exclude CIDR from being recognized as local address
       --fixed-identity-mapping map                              Key-value for the fixed identity mapping which allows to use reserved label for fixed identities, e.g. 128=kv-store,129=kube-dns
-      --force-local-policy-eval-at-source                       Force policy evaluation of all local communication at the source endpoint (default true)
       --gops-port uint16                                        Port for gops server to listen on (default 9890)
   -h, --help                                                    help for cilium-agent
       --http-idle-timeout uint                                  Time after which a non-gRPC HTTP stream is considered failed unless traffic in the stream has been processed (in seconds); defaults to 0 (unlimited)
@@ -163,8 +164,10 @@ cilium-agent [flags]
       --hubble-listen-address string                            An additional address for Hubble server to listen to, e.g. ":4244"
       --hubble-metrics strings                                  List of Hubble metrics to enable.
       --hubble-metrics-server string                            Address to serve Hubble metrics on.
+      --hubble-prefer-ipv6                                      Prefer IPv6 addresses for announcing nodes when both address types are available.
       --hubble-recorder-sink-queue-size int                     Queue size of each Hubble recorder sink (default 1024)
       --hubble-recorder-storage-path string                     Directory in which pcap files created via the Hubble Recorder API are stored (default "/var/run/cilium/pcaps")
+      --hubble-skip-unknown-cgroup-ids                          Skip Hubble events with unknown cgroup ids (default true)
       --hubble-socket-path string                               Set hubble's socket path to listen for connections (default "/var/run/cilium/hubble.sock")
       --hubble-tls-cert-file string                             Path to the public key file for the Hubble server. The file must contain PEM encoded data.
       --hubble-tls-client-ca-files strings                      Paths to one or more public key files of client CA certificates to use for TLS with mutual authentication (mTLS). The files must contain PEM encoded data. When provided, this option effectively enables mTLS.
@@ -242,7 +245,7 @@ cilium-agent [flags]
       --proxy-max-connection-duration-seconds int               Set Envoy HTTP option max_connection_duration seconds. Default 0 (disable)
       --proxy-max-requests-per-connection int                   Set Envoy HTTP option max_requests_per_connection. Default 0 (disable)
       --proxy-prometheus-port int                               Port to serve Envoy metrics on. Default 0 (disabled).
-      --read-cni-conf string                                    Read to the CNI configuration at specified path to extract per node configuration
+      --read-cni-conf string                                    CNI configuration file to use as a source for --write-cni-conf-when-ready. If not supplied, a suitable one will be generated.
       --restore                                                 Restores state, if possible, from previous daemon (default true)
       --route-metric int                                        Overwrite the metric used by cilium when adding routes to its 'cilium_host' device
       --sidecar-istio-proxy-image string                        Regular expression matching compatible Istio sidecar istio-proxy container image names (default "cilium/istio_proxy")
@@ -269,7 +272,7 @@ cilium-agent [flags]
       --vtep-endpoint strings                                   List of VTEP IP addresses
       --vtep-mac strings                                        List of VTEP MAC addresses for forwarding traffic outside the cluster
       --vtep-mask string                                        VTEP CIDR Mask for all VTEP CIDRs (default "255.255.255.0")
-      --write-cni-conf-when-ready string                        Write the CNI configuration as specified via --read-cni-conf to path when agent is ready
+      --write-cni-conf-when-ready string                        Write the CNI configuration to the specified path when agent is ready
 ```
 
 ### SEE ALSO
